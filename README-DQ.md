@@ -431,12 +431,24 @@ data-quality/
 pytest -v
 
 ### ============================================
+## GITLab  CI/CD pipeline includes:
+Unit tests (Pytest)
+1 Linting (Flake8 or Ruff)
+2 Avro/JSON schema validation
+3 Bicep/ARM validation (Azure)
+4 Docker build (optional)
+5 Security scanning
+6 Artifact uploads
+7 Environments for staging/prod
+8 GitLab Merge Request checks
 
 
-Turn this into a GitHub repo (I can create a ready-to-run git command sequence and PR template) 
-Add unit tests and CI (GitHub Actions) for validation logic 
-Replace placeholders with full Azure deployment (ARM/Bicep with Managed Identities & Key Vault) 
-Add a prettier architecture diagram (SVG/PNG) and include in the repo
+
+#### ============================================================================
+1. Turn this into a GitHub repo (I can create a ready-to-run git command sequence and PR template) 
+2. Add unit tests and CI (GitHub Actions) for validation logic 
+3. Replace placeholders with full Azure deployment (ARM/Bicep with Managed Identities & Key Vault) 
+4. Add a prettier architecture diagram (SVG/PNG) and include in the repo
 ==========================================================================
 >>>>>>>>>>> CASANDRA <<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>
 ### Data Quality in Cassandra: On-Prem vs Azure Cloud

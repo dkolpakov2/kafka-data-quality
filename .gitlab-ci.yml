@@ -1,0 +1,150 @@
+stages:
+  - lint
+  - test
+  - validate
+  - build
+  - security
+  - deploy
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  PYTHON_VERSION: "3.10"
+  VENV_DIR: "$CI_PROJECT_DIR/venv"
+
+cache:
+  paths:
+    - .cache/pip
+    - venv/
+
+# -------------------------
+#  1. Code Linting
+# -------------------------
+lint:
+  stage: lint
+  image: python:${PYTHON_VERSION}
+  script:
+    - python -m venv $VENV_DIR
+    - source $VENV_DIR/bin/activate
+    - pip install --upgrade pip
+    - pip install ruff
+    - ruff check .
+  allow_failure: false
+  artifacts:
+    when: always
+    paths:
+      - ruff.log
+
+# -------------------------
+#  2. Unit Tests
+# -------------------------
+unit_tests:
+  stage: test
+  image: python:${PYTHON_VERSION}
+  script:
+    - python -m venv $VENV_DIR
+    - source $VENV_DIR/bin/activate
+    - pip install -r requirements.txt
+    - pip install pytest pytest-cov
+    - pytest -v --cov=producer --cov=consumer --cov-report=xml
+  artifacts:
+    paths:
+      - coverage.xml
+    expire_in: 1 week
+
+# -------------------------
+#  3. Schema Validation (Avro/JSON)
+# -------------------------
+schema_validation:
+  stage: validate
+  image: python:${PYTHON_VERSION}
+  script:
+    - python -m venv $VENV_DIR
+    - source $VENV_DIR/bin/activate
+    - pip install fastavro jsonschema
+    - python scripts/validate_schemas.py
+  artifacts:
+    when: always
+    paths:
+      - schema-validation-report.txt
+
+# -------------------------
+#  4. Azure Bicep Validation
+# -------------------------
+azure_bicep_validation:
+  stage: validate
+  image: mcr.microsoft.com/azure-cli:latest
+  script:
+    - az bicep install
+    - az bicep build --file azure/deployment.bicep
+  artifacts:
+    paths:
+      - azure/deployment.json
+  only:
+    - merge_requests
+    - main
+
+# -------------------------
+#  5. Docker Build (Optional)
+# -------------------------
+docker_build:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  variables:
+    DOCKER_DRIVER: overlay2
+  script:
+    - docker build -t $CI_REGISTRY_IMAGE:dq-latest .
+    - docker push $CI_REGISTRY_IMAGE:dq-latest
+  only:
+    - main
+
+# -------------------------
+#  6. Security Scanning
+# -------------------------
+security_scan:
+  stage: security
+  image: python:${PYTHON_VERSION}
+  script:
+    - pip install bandit safety
+    - bandit -r producer consumer -f json -o bandit-report.json
+    - safety check --json > safety-report.json
+  artifacts:
+    paths:
+      - bandit-report.json
+      - safety-report.json
+  allow_failure: true
+
+# -------------------------
+#  7. Deploy to Azure (Staging)
+# -------------------------
+deploy_staging:
+  stage: deploy
+  image: mcr.microsoft.com/azure-cli:latest
+  script:
+    - echo "Deploying to Azure Staging..."
+    - az login --service-principal -u $AZURE_ID -p $AZURE_SECRET --tenant $AZURE_TENANT
+    - az deployment group create \
+         --resource-group $AZURE_RESOURCE_GROUP \
+         --template-file azure/deployment.bicep
+  environment:
+    name: staging
+  only:
+    - staging
+
+# -------------------------
+#  8. Deploy to Azure (Production)
+# -------------------------
+deploy_production:
+  stage: deploy
+  image: mcr.microsoft.com/azure-cli:latest
+  script:
+    - echo "Deploying to Azure Production..."
+    - az login --service-principal -u $AZURE_ID -p $AZURE_SECRET --tenant $AZURE_TENANT
+    - az deployment group create \
+         --resource-group $AZURE_RESOURCE_GROUP \
+         --template-file azure/deployment.bicep
+  environment:
+    name: production
+  only:
+    - tags
