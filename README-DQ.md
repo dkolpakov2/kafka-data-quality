@@ -145,6 +145,13 @@ Dirty messages persist unless custom streams clean them.
 | **Security & Compliance**              | Manual ACLs                         | AAD + Key Vault + Purview                         |
 | **Scalability Impact on Data Quality** | Risk of loss/duplication            | Auto-scale reduces ingestion errors               |
 ========================== THE END ================================================
+
+1. GitHub Actions CI pipeline (Pytest + lint + Bicep validation)
+2. Full Azure ARM/Bicep templates w/ Managed Identities & Key Vault
+3. Architectural diagrams (SVG/PNG)
+4. Repo-ready folder structure with badges
+
+
 ===================================================================================
 ## 
 1. Data Quality Implementation – Core Principles
@@ -418,6 +425,12 @@ data-quality/
     ├── dq-checklist.md
     ├── dq-governance.md
     └── dq-audit-template.md
+
+
+## Run Tests:
+pytest -v
+
+### ============================================
 
 
 Turn this into a GitHub repo (I can create a ready-to-run git command sequence and PR template) 

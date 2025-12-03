@@ -1,9 +1,9 @@
 # Pull Request: Data Quality Framework Update
 
-## 🔍 Summary
+##  Summary
 <!-- High-level summary of changes -->
 
-## 📦 Changes Included
+##  Changes Included
 - [ ] Producer validation logic
 - [ ] Consumer validation logic
 - [ ] DLQ workflows
@@ -12,14 +12,14 @@
 - [ ] Documentation updates
 - [ ] Tests added/updated
 
-## 🧪 Testing
+##  Testing
 Describe tests performed:
 - [ ] Unit tests
 - [ ] Integration tests
 - [ ] Local Kafka docker environment
 - [ ] Azure Event Hubs test run
 
-## 🚀 Deployment Notes
+##  Deployment Notes
 - [ ] No breaking changes
 - [ ] Migration steps required (describe below)
 - Additional notes:
