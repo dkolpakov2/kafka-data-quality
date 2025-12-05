@@ -144,6 +144,34 @@ Statistical comparison ->   Mean, stddev, quantiles	-> Detect data drift
 Schema changes	       ->   Schema registry diff	-> Detect mismatches
 -------------------------------------------------------------------------
 
+## STEPS:
+1. mvn clean package
+## Cassandra:
+2. CREATE KEYSPACE IF NOT EXISTS dq
+WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
+
+CREATE TABLE IF NOT EXISTS dq.dq_events (
+  id text,
+  ts text,
+  value double,
+  row_hash text,
+  full_json text,
+  PRIMARY KEY (id)
+);
+
+3. # run the reconciliation main (uses DataStax driver)
+java -cp target/flink-row-hash-1.0.0.jar com.example.dq.CassandraReconciliationJob
+# set env vars to point to OnPrem/Azure contact points
+
+## Integration notes & best practices
+    1. Idempotent writes: Use INSERT as idempotent if PK same; consider lightweight transactions only if strictly required (but they cost performance).
+    2.  Primary Key match: The reconciliation tool depends on a shared primary key mapping—ensure both pipelines enforce the same canonical primary key for each logical record.
+    3. Null handling: Hash algorithm treats null as empty string; if you need null vs empty distinct, adjust HashUtil.canonicalize accordingly.
+    4. Ignored fields: If some fields (e.g., last_updated, write_time, ingestion_ts) differ by environment, remove them before hashing (strip by field name pattern) — you can add a small preprocessing function that deletes those keys from the JsonNode prior to canonicalization.
+    5. Large tables: For large volumes, compute partition-level hashes (e.g., per key range) and compare those; run reconciliation in parallel using Flink batch or Spark.
+    6. Security: Secure Cassandra access (TLS, auth), and keep connection configs out of code (use config store or environment variables).
+    7. Observability: Emit metrics for dq.hash_mismatch_count, dq.missing_keys_count, and push to Datadog/Prometheus to alert when mismatches exceed thresholds.
+    8. Atomicity: If you require atomic dual writes across clouds, consider writing to a central Kafka topic as the single source-of-truth and having two independent consumers (Flink A and B) perform writes; reconciliation then ensures idempotence.
 
 -------------------------------
 ## Folder Structure (Recommended)
