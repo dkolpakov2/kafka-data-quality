@@ -1,0 +1,41 @@
+# rules.yaml - rule engine for data quality
+# Each rule has:
+#  id: unique id for tracking
+#  severity: warn|fail
+#  condition: a simple expression evaluated against the message context (python eval on a safe dict)
+#  message: text stored if rule fails
+#  route: validated|invalid|quarantine (where to send the message)
+
+rules:
+  - id: req_fields
+    severity: fail
+    condition: "all(k in msg for k in ['id','timestamp','value'])"
+    message: "missing required fields"
+    route: invalid
+
+  - id: value_type
+    severity: fail
+    condition: "isinstance(msg.get('value'), (int,float))"
+    message: "value wrong type"
+    route: invalid
+
+  - id: value_range
+    severity: warn
+    condition: "0 <= msg.get('value', -999999)"
+    message: "value negative"
+    route: quarantine
+
+  - id: timestamp_recent
+    severity: warn
+    condition: "(now - msg_ts).total_seconds() < 3600"
+    preprocess:
+      - name: "msg_ts"
+        expression: "from datetime import datetime; datetime.fromisoformat(msg['timestamp'])"
+    message: "timestamp older than 1 hour"
+    route: quarantine
+
+  - id: email_regex
+    severity: fail
+    condition: "bool(re.match(r'[^@]+@[^@]+\\.[^@]+', msg.get('email', '')))"
+    message: "email invalid"
+    route: invalid

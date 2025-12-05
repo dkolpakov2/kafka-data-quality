@@ -1,0 +1,14 @@
+logs_enabled: true
+apm_config:
+  enabled: true
+
+logs:
+  - type: file
+    path: "/var/log/kafka/*.log"
+    service: kafka-broker
+    source: kafka
+
+  - type: file
+    path: "/var/log/data-quality/*.log"
+    service: kafka-data-quality
+    source: python

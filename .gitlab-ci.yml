@@ -8,7 +8,7 @@ stages:
 
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
-  PYTHON_VERSION: "3.10"
+  PYTHON_VERSION: "3.12"
   VENV_DIR: "$CI_PROJECT_DIR/venv"
 
 cache:

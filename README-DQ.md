@@ -1,6 +1,114 @@
 ## Data Quality for Kafka (Topics & Messages): On-Prem vs Azure Cloud
     - Data Quality for Kafka focuses on what data enters the topics, how it's stored, and how it moves through the streaming ecosystem.
 -------------------------------
+## Folder Structure (Recommended)
+project/
+│
+├── docker-compose.yml
+├── dq/
+│   ├── requirements.txt
+│   ├── dq_service.py
+│   └── config.yaml
+└── flink/
+    └── flink-job.jar   # Your Flink job, optional placeholder
+
+----------------------------------
+4. Python Requirements
+    - create file: dq/requirements.txt
+            kafka-python==2.0.2
+            pyyaml
+6. Apache Flink Streaming App (Flink → Cassandra)
+    Flink job will do next:
+       - Read from validated_input
+       - Perform streaming transformations
+       - Write to Cassandra
+
+Flink pseudocode (Java/Scala/Python supported):
+
+DataStream<String> stream = env
+    .fromSource(kafkaSource, WatermarkStrategy.noWatermarks(), "Kafka Source");
+
+DataStream<JsonNode> parsed =
+    stream.map(new JsonNodeParser());
+
+DataStream<JsonNode> cleaned =
+    parsed.filter(record -> record.get("value").asDouble() >= 0);
+
+cleaned.addSink(CassandraSink.addSink(cleaned)
+    .setQuery("INSERT INTO dq.data (id, ts, value) VALUES (?, ?, ?)")
+    .build());
+
+7. Cassandra Table
+CREATE KEYSPACE dq
+WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
+
+CREATE TABLE dq.data (
+    id text,
+    ts timestamp,
+    value double,
+    PRIMARY KEY(id, ts)
+);
+8. Start all APPS in docker:
+    >>    docker-compose up -d --build
+
+9. create JAva jar:
+    >> mvn clean package
+10. Deploy JAR to Flink (in Docker-compose)  
+curl -X POST -H "Expect:" -F "jarfile=@target/flink-dq-job-1.0.0-shaded.jar" \
+  http://localhost:8081/jars/upload
+  
+11. Start Job:
+curl -X POST http://localhost:8081/jars/<JAR_ID>/run
+
+###### =============================================================
+10. generate:
+✔ Sample Flink JAR (Java)
+✔ Python Flink Streaming Job instead
+✔ FastAPI API gateway for producing messages
+✔ Add DataDog monitoring to all containers
+✔ Helm charts for containerized Kubernetes deployment
+✔ Full CI/CD (GitLab or GitHub Actions)
+
+======================================================================
+# Data Quality
+1. A Schema Registry check implementation (supports Confluent Schema Registry or Azure Schema Registry) — Python pre-ingest validator.
+2. A Rule Engine driven by a human-editable YAML file plus a small Python engine that applies rules (type checks, ranges, regexes, cross-field rules).
+3. Statistical anomaly detection implemented two ways:
+4. Flink (Java) sliding-window mean/stddev detector that emits anomaly events to a Kafka anomalies topic.
+5. A Python streaming fallback that computes rolling z-score (useful for smaller setups or testing).
+#####
+>> Integration into Docker Compose:
+ -> Kafka -> Flink -> Cassandra -> Datadog metrics.
+--------------------------------------------------------------------------
+dq/
+  ├── schema_validator.py            # Schema registry client + validator
+  ├── rule_engine.py                 # YAML-driven rule engine
+  ├── rules.yaml                     # Example rule file
+  ├── dq_service.py                  # Glue: consume -> schema check -> rule engine -> produce validated/invalid
+  └── requirements.txt               # pip deps
+
+flink-job/src/main/java/com/example/dq/
+  ├── FlinkDQJob.java                # main job (enhanced)
+  └── AnomalyDetector.java          # windowed anomaly detection UDF
+
+docker-compose.yml (update)
+  - add schema-registry service
+  - add `anomalies` topic and ensure Flink job has access
+---------------------------------------------------------------------
+2. Schema Registry checker (Python)
+    Supports Confluent Schema Registry or Azure Schema Registry (choose via MODE).
+dq/schema_validator.py
+3. Ensure topics exist: raw_input, validated_input, dq_failures, dq_quarantine, anomalies.
+>> add manual:
+    kafka-topics --create --bootstrap-server kafka:9092 --replication-factor 1 --partitions 4 --topic validated_input
+... 5 topics
+
+4. Deploy Flink JAR (updated job with anomaly windowing) to Flink UI or via REST API.
+
+5. Monitor metrics/logs; check anomalies topic for flagged records.
+
+
+=====================================================================
 1. Data Ingestion Quality
 ## On-Prem Kafka
     1. Ingestion pipelines are custom-built, often inconsistent across teams.
@@ -190,6 +298,14 @@ Dirty messages persist unless custom streams clean them.
 2.1 Producer with Schema Validation (Python Example)
 # Uses Azure Schema Registry + Avro validation.
 >> python:
+import logging
+from datadog import initialize, statsd
+
+initialize(api_key=os.getenv("DD_API_KEY"))
+
+logger = logging.getLogger("kafka-dq")
+logger.setLevel(logging.INFO)
+
 from azure.schemaregistry import SchemaRegistryClient
 from azure.schemaregistry.encoder.avroencoder import AvroEncoder
 from azure.eventhub import EventHubProducerClient, EventData
@@ -244,6 +360,14 @@ print("Message sent with schema validation!")
     ✔ Ensures downstream pipelines remain clean
 ------------------------------------------------    
 >> python:
+import logging
+from datadog import initialize, statsd
+
+initialize(api_key=os.getenv("DD_API_KEY"))
+
+logger = logging.getLogger("kafka-dq")
+logger.setLevel(logging.INFO)
+
 from azure.eventhub import EventHubConsumerClient, EventHubProducerClient, EventData
 
 def validate_message(msg):
@@ -323,6 +447,13 @@ producer.flush()
 3.2 On-Prem Consumer with DLQ Logic
 ##
 >> pyhton:
+import logging
+from datadog import initialize, statsd
+
+initialize(api_key=os.getenv("DD_API_KEY"))
+
+logger = logging.getLogger("kafka-dq")
+logger.setLevel(logging.INFO)
 
 from confluent_kafka import Consumer, Producer
 
@@ -405,6 +536,27 @@ On-Prem:
 #####
 5. Folder Structure for Real Implementation
 #####
+kafka-data-quality-repo/
+│
+├── producer/
+│   └── validator.py
+├── consumer/
+│   └── rules.py
+├── scripts/
+│   └── validate_schemas.py
+├── schemas/
+│   ├── avro/
+│   └── json/
+├── azure/
+│   └── deployment.bicep
+├── tests/
+│   ├── test_validator_*.py
+│   └── conftest.py
+├── .gitlab-ci.yml
+└── requirements.txt
+
+
+## THis si Old obsolete
 data-quality/
 ├── producer/
 │   ├── producer.py
@@ -442,6 +594,60 @@ Unit tests (Pytest)
 7 Environments for staging/prod
 8 GitLab Merge Request checks
 
+## For Azure Deployment:
+| Variable               | Purpose        |
+| ---------------------- | -------------- |
+| `AZURE_ID`             | Client ID      |
+| `AZURE_SECRET`         | Client Secret  |
+| `AZURE_TENANT`         | Tenant ID      |
+| `AZURE_RESOURCE_GROUP` | Resource group |
+## For Container Registry
+GitLab auto-generates these:
+$CI_REGISTRY
+$CI_REGISTRY_IMAGE
+$CI_REGISTRY_PASSWORD
+$CI_REGISTRY_USER
+Merge Request Rules
+
+Inside GitLab → Settings → General → Merge Requests:
+
+4. Datadog Dashboards (Replacing Grafana)
+| Metric                                | Description                    |
+| ------------------------------------- | ------------------------------ |
+| `kafka.dq.schema.violations`          | Avro/JSON schema errors        |
+| `kafka.dq.malformed_messages`         | Failed producer validation     |
+| `kafka.dq.dlq.count`                  | Number of messages sent to DLQ |
+| `kafka.dq.consumer.lag`               | Consumer lag per partition     |
+| `kafka.dq.test.failures`              | Failed unit tests              |
+| `kafka.dq.test.coverage`              | Code coverage %                |
+| `kafka.topic.message_rate`            | Messages per cluster/topic     |
+| `kafka.lag`                           | Lag by consumer group          |
+| `eventhubs.incoming.requests` (Azure) | Event Hub ingestion            |
+--------------------------------------------------------------------------
+5. Datadog Alerts / Monitors
+✔ Schema Violations
+avg(last_5m):sum:kafka.dq.schema.violations > 5
+
+✔ DLQ Spike
+sum(last_10m):kafka.dq.dlq.count > 20
+
+✔ Consumer Lag
+avg(last_5m):kafka.consumer.lag{environment:prod} > 3000
+
+✔ Dead Consumer Alert
+max(last_5m):kafka.consumer.offset_lag{*} by {consumer_group} == 0
+--------------------------------------------------------------------
+6. Required GitLab CI Variables for Datadog
+| Variable     | Description              |
+| ------------ | ------------------------ |
+| `DD_API_KEY` | Datadog API key          |
+| `DD_APP_KEY` | Datadog app key          |
+| `DD_SITE`    | e.g., `datadoghq.com`    |
+| `DD_ENV`     | `dev`, `staging`, `prod` |
+| Variable        | Description             |
+| --------------- | ----------------------- |
+| `TEST_COVERAGE` | Pass from pytest report |
+| `TEST_FAILURES` | Fail count              |
 
 
 #### ============================================================================

@@ -1,4 +1,12 @@
 import re
+import logging
+from datadog import initialize, statsd
+
+initialize(api_key=os.getenv("DD_API_KEY"))
+
+logger = logging.getLogger("kafka-dq")
+logger.setLevel(logging.INFO)
+
 
 def validate_required_fields(record, required_fields):
     return all(field in record for field in required_fields)
