@@ -52,7 +52,17 @@ public class FlinkDQJob {
                                 node.get("value").asDouble()
                         )
         );
+// // After cleaned DataStream<JsonNode> cleaned
+// DataStream<Tuple3<String, String, Double>> tuples = cleaned.map(...);
 
+// // Key by id (or topic) and window
+// DataStream<String> stats = tuples
+//     .keyBy(t -> t.f0) // id
+//     .window(SlidingProcessingTimeWindows.of(Time.minutes(1), Time.seconds(30)))
+//     .aggregate(new StatsAggregate(), new AnomalyProcess());
+
+// // stats contains mean/std per key. You can broadcast this to compute per-event z-score, or
+// // alternatively compute z-score in ProcessFunction with stateful aggregates per key (preferred for per-event).
         // Cassandra sink
         CassandraSink.addSink(tuples)
                 .setQuery("INSERT INTO dq.data (id, ts, value) VALUES (?, ?, ?);")
