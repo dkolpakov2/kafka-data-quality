@@ -1,0 +1,30 @@
+# rules.yaml - generic, table-agnostic rules
+# supports rule types: required, threshold, range, regex, timestamp_freshness
+rules:
+  - id: required_fields
+    type: required
+    fields: ["id","ts","value"]
+    severity: fail
+    message: "missing required field(s)"
+
+  - id: negative_value
+    type: range
+    field: "value"
+    max: null
+    min: 0
+    severity: fail
+    message: "value must be >= 0"
+
+  - id: old_timestamp
+    type: timestamp_freshness
+    field: "ts"
+    max_age_seconds: 86400
+    severity: warn
+    message: "event older than 1 day"
+
+  - id: email_regex
+    type: regex
+    field: "email"
+    pattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+    severity: fail
+    message: "invalid email"

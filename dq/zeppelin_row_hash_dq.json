@@ -1,0 +1,42 @@
+{
+  "name": "Flink_DQ_RowHash",
+  "paragraphs": [
+    {
+      "title": "1 - Register Kafka Source (raw events)",
+      "text": "%flink.ssql\n\nCREATE TABLE IF NOT EXISTS raw_events (\n  id STRING,\n  ts TIMESTAMP(3),\n  value DOUBLE,\n  event_json STRING,\n  WATERMARK FOR ts AS ts - INTERVAL '5' SECOND\n) WITH (\n  'connector' = 'kafka',\n  'topic' = 'raw_topic',\n  'properties.bootstrap.servers' = 'kafka:9092',\n  'scan.startup.mode' = 'earliest-offset',\n  'format' = 'json'\n);\n\n-- Quick sanity: SELECT * FROM raw_events LIMIT 5;"
+    },
+    {
+      "title": "2 - Compute Row Hash (SHA-256), Enrich",
+      "text": "%flink.ssql\n\n-- Use built-in SHA2 on the full JSON payload (stable canonicalization may be done upstream)\nCREATE VIEW IF NOT EXISTS enriched_events AS\nSELECT\n  id,\n  ts,\n  value,\n  event_json,\n  CAST(SHA2(event_json, 256) AS STRING) AS row_hash\nFROM raw_events;\n\nSELECT id, row_hash FROM enriched_events LIMIT 5;"
+    },
+    {
+      "title": "3 - DQ Results View (placeholder) - replace with rules from rules_to_sql.py output",
+      "text": "%flink.ssql\n\n-- The following view is a placeholder. Run the Python rule generator to produce the actual CASE expression\n-- and paste it here (or you can run the generator and pipe into Zeppelin).\n\nCREATE VIEW IF NOT EXISTS dq_results AS\nSELECT\n  id,\n  ts,\n  value,\n  row_hash,\n  event_json,\n  CASE\n    WHEN id IS NULL THEN 'MISSING_ID'\n    WHEN value IS NULL THEN 'MISSING_VALUE'\n    WHEN value < 0 THEN 'NEGATIVE_VALUE'\n    ELSE 'VALID'\n  END AS dq_status,\n  CASE\n    WHEN id IS NULL THEN 'id required'\n    WHEN value IS NULL THEN 'value required'\n    WHEN value < 0 THEN 'value negative'\n    ELSE 'OK'\n  END AS dq_reason\nFROM enriched_events;\n\nSELECT id, dq_status, dq_reason FROM dq_results LIMIT 5;"
+    },
+    {
+      "title": "4 - Write Valid to Kafka (validated_topic)",
+      "text": "%flink.ssql\n\nCREATE TABLE IF NOT EXISTS kafka_valid (\n  id STRING,\n  ts TIMESTAMP(3),\n  value DOUBLE,\n  row_hash STRING,\n  event_json STRING\n) WITH (\n  'connector' = 'kafka',\n  'topic' = 'validated_topic',\n  'properties.bootstrap.servers' = 'kafka:9092',\n  'format' = 'json'\n);\n\nINSERT INTO kafka_valid\nSELECT id, ts, value, row_hash, event_json\nFROM dq_results\nWHERE dq_status = 'VALID';"
+    },
+    {
+      "title": "5 - Write Invalid to Kafka (invalid_topic)",
+      "text": "%flink.ssql\n\nCREATE TABLE IF NOT EXISTS kafka_invalid (\n  id STRING,\n  dq_status STRING,\n  dq_reason STRING,\n  row_hash STRING,\n  event_json STRING\n) WITH (\n  'connector' = 'kafka',\n  'topic' = 'invalid_topic',\n  'properties.bootstrap.servers' = 'kafka:9092',\n  'format' = 'json'\n);\n\nINSERT INTO kafka_invalid\nSELECT id, dq_status, dq_reason, row_hash, event_json\nFROM dq_results\nWHERE dq_status <> 'VALID';"
+    },
+    {
+      "title": "6 - Sink Valid to Cassandra (On-Prem)",
+      "text": "%flink.ssql\n\nCREATE TABLE IF NOT EXISTS cassandra_onprem (\n  id STRING,\n  ts STRING,\n  value DOUBLE,\n  row_hash STRING,\n  full_json STRING,\n  PRIMARY KEY (id)\n) WITH (\n  'connector' = 'cassandra',\n  'host' = 'cassandra-onprem',\n  'keyspace' = 'dq',\n  'table' = 'dq_events'\n);\n\nINSERT INTO cassandra_onprem\nSELECT id, CAST(ts AS STRING), value, row_hash, event_json\nFROM dq_results\nWHERE dq_status = 'VALID';"
+    },
+    {
+      "title": "7 - Sink Valid to Cassandra (Azure)",
+      "text": "%flink.ssql\n\nCREATE TABLE IF NOT EXISTS cassandra_azure (\n  id STRING,\n  ts STRING,\n  value DOUBLE,\n  row_hash STRING,\n  full_json STRING,\n  PRIMARY KEY (id)\n) WITH (\n  'connector' = 'cassandra',\n  'host' = 'cassandra-azure',\n  'keyspace' = 'dq',\n  'table' = 'dq_events'\n  -- add auth params if needed: 'username'='..','password'='..'\n);\n\nINSERT INTO cassandra_azure\nSELECT id, CAST(ts AS STRING), value, row_hash, event_json\nFROM dq_results\nWHERE dq_status = 'VALID';"
+    },
+    {
+      "title": "8 - Reconciliation View (compare row_hash across On-Prem and Azure)",
+      "text": "%flink.ssql\n\n-- Reconciliation uses Cassandra tables as Flink SQL sources.\nCREATE VIEW IF NOT EXISTS cass_onprem AS\nSELECT id, row_hash FROM cassandra_onprem;\n\nCREATE VIEW IF NOT EXISTS cass_azure AS\nSELECT id, row_hash FROM cassandra_azure;\n\nCREATE VIEW IF NOT EXISTS reconciliation AS\nSELECT\n  COALESCE(a.id, b.id) AS id,\n  a.row_hash AS onprem_hash,\n  b.row_hash AS azure_hash,\n  CASE\n    WHEN a.row_hash IS NULL THEN 'MISSING_IN_ONPREM'\n    WHEN b.row_hash IS NULL THEN 'MISSING_IN_AZURE'\n    WHEN a.row_hash <> b.row_hash THEN 'DRIFT'\n    ELSE 'OK'\n  END AS status\nFROM cass_onprem a\nFULL OUTER JOIN cass_azure b\nON a.id = b.id;\n\nSELECT id, status FROM reconciliation WHERE status <> 'OK' LIMIT 50;"
+    }
+  ],
+  "config": {},
+  "info": {
+    "id": "flink-dq-rowhash-notebook",
+    "name": "Flink_DQ_RowHash"
+  }
+}

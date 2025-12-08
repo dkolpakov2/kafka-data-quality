@@ -26,9 +26,123 @@ Outputs
 | Dual-pipeline (2 Kafka → 2 Flink → 2 Cassandra) | fully supported             |
 | Zero Java code                                  | 100% SQL-based              |
 ---------------------------------------------------------------------------------
-1. Generate Zeppelin notebook JSON (importable)
-2 .Reusable DQ rules YAML → SQL rule generator
-3. Cassandra drift reconciliation as SQL view
+1. Create Zeppelin notebook JSON 
+2. Reusable DQ rules YAML → SQL rule generator (Python based rules_to_sql.py)
+  (will convert YAML into Flink SQL case logic - generated DQ-results view SQL)
+3. Cassandra drift reconciliation as SQL view for Flink SQL = will compare rows:
+  OnPRem and Cloud Cassandra tables, will show mismatches.
+  >> dq/drift_rec.sql
+
+## As Result DQ will cover:
+ 1. Fully-featured DQ rule engine
+ 2. Extensible YAML rules
+ 3. Automatic SQL view generation
+ 4. Zeppelin REST auto-update
+ 5. External lookups
+ 6. Cross-field checks
+ 7. Null-handling semantics
+ 8. Ready for large-scale DQ governance across all Flink jobs
+
+================================================================================
+# STEPS:
+## Zeppelin SQL Notebook
+# Content:
+1. Kafka source
+2. Row hash
+3. DQ rule engine (USe py rule_to_sql.py to generate rules:)
+4. Valid topic
+5. Invalid topic
+6. Cassandra On-Prem sink
+7. Cassandra Azure sink
+
+## Deployment Steps:
+  1. Deploy the Zeppelin notebook (zeppelin_rowhash_dq.json) via Zeppelin UI → Import.
+  2. Put rules.yaml and rules_to_sql.py on a machine accessible by Zeppelin (or run locally).
+  3. Run python rules_to_sql.py rules.yaml > dq_results.sql, copy/paste the CREATE VIEW dq_results SQL into the Zeppelin paragraph 3 (replacing the placeholder).
+  4. Alternatively, run the generator inside Zeppelin using %sh python /path/rules_to_sql.py /path/rules.yaml and copy the output into a %flink.ssql paragraph.
+  >> Limitations:
+  3.2. This generator emits CASE statements using Flink SQL functions (REGEXP_LIKE / NOW() etc. older versions may use REGEXP).
+  3.3. More complex rules: 
+        - cross-field comparisons
+        - external lookups
+        - schema registry checks
+      require either UDFs or pre-/post-processing outside SQL — the generator covers the common rule types requested.
+  4. Ensure Kafka topics exist: raw_topic, validated_topic, invalid_topic.
+  5. Ensure Flink has the Cassandra connector available and the cassandra_onprem / cassandra_azure table connectors are correctly configured (host, auth).
+  6. Run notebook paragraphs in Zeppelin to get: (source → enrich → dq_results → sinks).
+  7. Monitor cassandra_reconciliation view for drift; optionally write to an alerting topic.
+    Can query:
+  >> SELECT * FROM cassandra_reconciliation WHERE reconciliation_status <> 'OK' LIMIT 100;
+## For testing:
+8. Extend the rules_to_sql.py generator to support more rule types (cross-field, external lookup, configurable null-handling), or to directly push the generated SQL into Zeppelin via the REST API. 
+  >> Use: rules_to_sql_extended.py
+
+9. Create a Zeppelin %sh paragraph that runs the generator and auto-inserts the generated SQL into a paragraph (requires Zeppelin REST API tokens).
+>> Zeppelin %sh paragraph
+  A paragraph that runs the generator inside Zeppelin, 
+    - fetches YAML
+    - generates SQL
+    - auto-updates another paragraph.
+10. Add Schema Validation - runtime message validator PY
+  - Integration Steps:
+    1. Import and call validate_dict in dq_service.py pipeline before rules: invalid messages get routed to DLQ/invalid topic.
+    2. For Azure Schema Registry, need to use the Azure SDK (azure-schemaregistry + azure-identity) in production; 
+    it is for Confluent REST.
+11. Add Schema-evolutuon / Compatibility Check 
+ ## ATTN: 
+  script is conservative 
+    - Full Avro compatibility semantics need to plug in a compatibility library like 
+    -- Apache Avro 1.11 Java compatibility tools 
+    -- Confluent's compatibility checks
+  Need to use:
+   --latest-prev to compare latest two versions quickly.
+11. 1. 
+  Integration schema checks into DQ flow:
+  11.1.1 Runtime schema validation (per-event)
+    - Add schema_validator.SchemaValidator into Python DQ microservice (dq_service.py) before rule engine:
+    - Call ok, reason = sv.validate_dict(record, subject=subject_name)
+    - If not ok: mark record as invalid and route to DLQ
+    - If ok: proceed to other rules
+    This ensures only schema-conforming messages reach Flink SQL / the dq_results view.
+  >> inside existing dq_service.py loop:
+  >> py:
+    from schema_validator import SchemaValidator
+    sv = SchemaValidator(schema_registry_url=os.getenv("SCHEMA_REGISTRY_URL"))
+
+    subject = "<topic>-value"
+    ok, reason = sv.validate_dict(record, subject=subject)
+    if not ok:
+        record["_dq_reasons"] = [{"id": "schema_validation", "severity": "fail", "message": reason}]
+        producer.send(INVALID_TOPIC, record)
+        continue
+      # else: forward to validated topic or to Flink
+--------------------------------------------------------------
+## Schema-evolution checks (pre-deploy / CI / governance)
+  Use schema_evolution_check.py in CI pipeline to automatically check compatibility when pushing new schemas.
+
+  ## GitLab/GitHub CI step:
+    On PR that updates schemas 
+    - run python:
+     schema_evolution_check.py --registry $REG --subject $SUB --version-old $OLD --version-new $NEW or --latest-prev
+
+  ATTN: 
+    Fail the build if breaking changes found (unless explicitly approved).
+--------------------------------------------------------------
+###  Zeppelin integration & rules_to_sql
+  In rules.yaml:
+    - allow a schema_registry rule that instructs the generator to:
+    - (a) place a placeholder condition in the SQL (because SQL can't call registry at runtime), and
+    - (b) the generator or deploy pipeline will ensure the runtime validator microservice is deployed
+  >> Add to rule next entry:
+    - id: schema_check
+      type: schema_registry
+      subject: "customers-value"
+      severity: fail
+      message: "message does not conform to schema in registry"
+
+
+===================================================
+:: SQL ::
 ---------------------------------------------------
 INSERT INTO keyspace.table (pk, col1, col2) VALUES (pk_val, val1, val2) IF NOT EXISTS;
 
@@ -140,7 +254,7 @@ WHERE email IS NOT NULL AND user_id IS NOT NULL
 PRIMARY KEY (email, user_id);
 
 ## Notes:
--- Secondary indexes and MVs have performance and maintenance trade-offs. Prefer designing tables for your query patterns or maintain denormalized tables via application or lightweight batches.
+-- Secondary indexes and MVs have performance and maintenance trade-offs. Prefer designing tables for query patterns or maintain denormalized tables via application or lightweight batches.
 ## 6) Table options: compaction, compression, caching, TTL
 -- Example with Leveled Compaction (good for small writes & random reads)
 CREATE TABLE IF NOT EXISTS dmitriks.products (
