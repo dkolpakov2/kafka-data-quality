@@ -59,7 +59,7 @@ Outputs
   1. Deploy the Zeppelin notebook (zeppelin_rowhash_dq.json) via Zeppelin UI → Import.
   2. Put rules.yaml and rules_to_sql.py on a machine accessible by Zeppelin (or run locally).
   3. Run python rules_to_sql.py rules.yaml > dq_results.sql, copy/paste the CREATE VIEW dq_results SQL into the Zeppelin paragraph 3 (replacing the placeholder).
-  4. Alternatively, run the generator inside Zeppelin using %sh python /path/rules_to_sql.py /path/rules.yaml and copy the output into a %flink.ssql paragraph.
+  4. Alternatively 2nd option: we can run the generator inside Zeppelin using %sh python /path/rules_to_sql.py /path/rules.yaml and copy the output into a %flink.ssql paragraph.
   >> Limitations:
   3.2. This generator emits CASE statements using Flink SQL functions (REGEXP_LIKE / NOW() etc. older versions may use REGEXP).
   3.3. More complex rules: 
@@ -153,7 +153,7 @@ INSERT INTO keyspace.table (pk, col1) VALUES (pk_val, col_val) USING TTL 3600 AN
 -----------------------
 ## Keyspace creation (dev and production examples)
 -- Simple/local development (not for multi-DC production)
-CREATE KEYSPACE IF NOT EXISTS dmitryks
+CREATE KEYSPACE IF NOT EXISTS testks
 WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}
 AND durable_writes = true;
 
@@ -275,8 +275,8 @@ created timestamp
 -----------------------------------------------
 ## -- Batch multiple statements (use sparingly — logged batch across multiple partitions is anti-pattern):
 BEGIN BATCH
-INSERT INTO dmitryks.table (pk, c1) VALUES (pk1, v1);
-INSERT INTO dmitryks.table (pk, c1) VALUES (pk2, v2);
+INSERT INTO testks.table (pk, c1) VALUES (pk1, v1);
+INSERT INTO testks.table (pk, c1) VALUES (pk2, v2);
 APPLY BATCH;
 
 ============================================================

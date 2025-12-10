@@ -1,0 +1,32 @@
+{
+  "title": "DQ Counters Dashboard",
+  "widgets": [
+    {
+      "type": "timeseries",
+      "title": "Valid count",
+      "requests": [
+        {
+          "q": "sum:kafka.dq_metrics_valid{*}.valid_count.rollup(sum,60)"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Invalid count",
+      "requests": [
+        {
+          "q": "sum:kafka.dq_metrics_invalid{*}.invalid_count.rollup(sum,60)"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Invalid ratio",
+      "requests": [
+        {
+          "q": "sum:kafka.dq_metrics_invalid{*}.invalid_count.rollup(sum,60) / (sum:kafka.dq_metrics_valid{*}.valid_count.rollup(sum,60) + 1)"
+        }
+      ]
+    }
+  ]
+}
