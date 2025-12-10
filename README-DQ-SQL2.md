@@ -318,6 +318,202 @@ Deploy Datadog agent or consume the metrics topics to feed dashboards.
 3. Direct DB-to-DB diff jobs - Slow, expensive, unsafe
 4. Periodic full table scans - Non-scalable, disruptive
 
+
+===================================================================
+## Architecture
+Cassandra -> Kafka- Flink SQL
+-------------------------------------------------------------------
+1. No direct DB-to-DB connection
+2. Immutable audit trail
+3. Real-time or near-real-time
+4. Works with Zeppelin SQL
+-------------------
+## This Is the BEST Solution
+----------------------------
+| Requirement        | Met |
+| ------------------ | --- |
+| No direct DB-to-DB | Y   |
+| Real-time          | Y   |
+| Zeppelin SQL       | Y   |
+| Immutable audit    | Y   |
+| Scales             | Y   |
+| Security           | Y   |
+| Compliance-ready   | Y   |
+----------------------------
+## ATTN:
+## Anti-patterns to Avoid
+>> Hashing inside Cassandra triggers
+>> Mixing hash logic between DCs
+>> Ignoring event time skew
+>> Cross-DC database drivers
+>> Full table scans
+
+## TODO
+Generate Debezium Cassandra connector config
+Provide a Zeppelin notebook JSON for this exact flow
+Add CI validation rules
+Add auto-remediation logic
+
+------------------------------
+## Step 1 — Capture Cassandra Updates → Kafka
+   Option A (BEST): CDC via Debezium + Cassandra CommitLog
+    Recommended for real-time audits
+##  Components
+  - Debezium Cassandra Connector
+  - Kafka Connect cluster (on-prem)
+>> What Happens = 
+  Pushes to Kafka topic:
+    onprem.cdc.sales.events
+  Reads Cassandra CommitLog
+  Emits INSERT / UPDATE events
+  No polling
+  Minimal load
+  Example Debezium Event:
+  >> {
+  "key": { "id": "123" },
+  "value": {
+    "after": {
+      "id": "123",
+      "amount": 100,
+      "event_ts": "2025-01-01T10:00:00"
+    },
+    "op": "u",
+    "ts_ms": 1730000000000
+  }
+}
+---------------------------------
+## Step 2 — Hash the Record (Kafka → Flink SQL)
+  Flink SQL (Zeppelin) — On-Prem Side
+>> SQL
+CREATE TABLE cass_onprem_cdc (
+  id STRING,
+  amount DOUBLE,
+  event_ts TIMESTAMP(3),
+  WATERMARK FOR event_ts AS event_ts - INTERVAL '5' SECOND
+) WITH (
+  'connector' = 'kafka',
+  'topic' = 'onprem.cdc.sales.events',
+  'properties.bootstrap.servers' = 'kafka:9092',
+  'format' = 'json'
+);
+--------------------
+# Canonical Hash View
+  - Must be identical on both sides
+>> SQL
+CREATE VIEW onprem_hashed AS
+SELECT
+  id,
+  SHA256(
+    CONCAT_WS('|',
+      COALESCE(id,'NULL'),
+      COALESCE(CAST(amount AS STRING),'NULL'),
+      CAST(event_ts AS STRING)
+    )
+  ) AS row_hash,
+  event_ts
+FROM cass_onprem_cdc;
+------------------------
+# Publish Hash to Kafka Audit Topic
+-- This topic becomes your immutable audit stream
+>>SQL
+CREATE TABLE onprem_hash_topic (
+  id STRING,
+  row_hash STRING,
+  source_dc STRING,
+  event_ts TIMESTAMP(3)
+) WITH (
+  'connector' = 'kafka',
+  'topic' = 'onprem_hash_events',
+  'properties.bootstrap.servers' = 'kafka:9092',
+  'format' = 'json'
+);
+
+INSERT INTO onprem_hash_topic
+SELECT
+  id,
+  row_hash,
+  'ONPREM' AS source_dc,
+  event_ts
+FROM onprem_hashed;
+----------------------------------
+## Step 3 — Cloud Side (Same Pattern)
+
+## Step 4 — Compare Two Kafka Topics in Flink SQL
+CREATE TABLE onprem_hash (
+  id STRING,
+  row_hash STRING,
+  event_ts TIMESTAMP(3)
+) WITH (
+  'connector' = 'kafka',
+  'topic' = 'onprem_hash_events',
+  'properties.bootstrap.servers' = 'kafka:9092',
+  'format' = 'json'
+);
+
+CREATE TABLE cloud_hash (
+  id STRING,
+  row_hash STRING,
+  event_ts TIMESTAMP(3)
+) WITH (
+  'connector' = 'kafka',
+  'topic' = 'cloud_hash_events',
+  'properties.bootstrap.servers' = 'kafka:9092',
+  'format' = 'json'
+);
+-------------------------
+## 5 Windowed Join (Handling Timing Differences)
+  - Tolerates replication delay
+  - Works in Zeppelin SQL
+>> SQL
+CREATE VIEW reconciliation AS
+SELECT
+  COALESCE(o.id, c.id) AS id,
+  o.row_hash AS onprem_hash,
+  c.row_hash AS cloud_hash,
+  CASE
+    WHEN o.row_hash IS NULL THEN 'MISSING_ONPREM'
+    WHEN c.row_hash IS NULL THEN 'MISSING_CLOUD'
+    WHEN o.row_hash <> c.row_hash THEN 'DRIFT'
+    ELSE 'MATCH'
+  END AS status
+FROM onprem_hash o
+FULL OUTER JOIN cloud_hash c
+ON o.id = c.id
+AND o.event_ts BETWEEN c.event_ts - INTERVAL '10' MINUTE
+                    AND c.event_ts + INTERVAL '10' MINUTE;
+
+## 6 Step 5 — Persist Audit Results
+>> SQL
+CREATE TABLE dq_reconciliation_audit (
+  id STRING,
+  onprem_hash STRING,
+  cloud_hash STRING,
+  status STRING,
+  audit_ts TIMESTAMP(3)
+) WITH (
+  'connector' = 'kafka',
+  'topic' = 'dq_reconciliation_audit',
+  'properties.bootstrap.servers' = 'kafka:9092',
+  'format' = 'json'
+);
+
+INSERT INTO dq_reconciliation_audit
+SELECT
+  id,
+  onprem_hash,
+  cloud_hash,
+  status,
+  CURRENT_TIMESTAMP
+FROM reconciliation
+WHERE status <> 'MATCH';
+
+---------------------------------
+
+
+
+
+
+
 ==================================================================
 ## Audit for Cassandra ===========================================
 ==================================================================
