@@ -1,4 +1,4 @@
-## Flink SQL + Zeppelin + Cassandra DC (Cloud/onPrem)
+## Kafka ->Flink SQL + Zeppelin + Cassandra DC (Cloud/onPrem)
 >> One Flink job → one Kafka topic
 ✅ One Flink job → exactly one Cassandra data center
 ✅ No cross-DC writes
@@ -15,7 +15,7 @@
              │                               │
      ┌───────▼────────┐              ┌───────▼────────┐
      │ Flink SQL Job  │              │ Flink SQL Job  │
-     │  (Zeppelin)   │              │  (Zeppelin)   │
+     │  (Zeppelin)    │              │  (Zeppelin)    │
      └───────┬────────┘              └───────┬────────┘
              │                               │
    Cassandra On-Prem                  Cassandra Azure

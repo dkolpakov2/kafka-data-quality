@@ -1,0 +1,32 @@
+{
+  "name": "cassandra-cloud-sales-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.cassandra.CassandraConnector",
+    "tasks.max": "1",
+
+    "cassandra.contact.points": "cassandra-cloud-01.internal,cassandra-cloud-02.internal",
+    "cassandra.port": "9042",
+    "cassandra.local.datacenter": "DC_AZURE",
+
+    "cassandra.keyspace": "sales",
+    "cassandra.table.include.list": "sales.events",
+
+    "cdc.dir": "/var/lib/cassandra/cdc",
+
+    "topic.prefix": "cloud.cdc",
+
+    "snapshot.mode": "initial",
+    "tombstones.on.delete": "false",
+
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "key.converter.schemas.enable": "false",
+    "value.converter.schemas.enable": "false",
+
+    "errors.tolerance": "all",
+    "errors.deadletterqueue.topic.name": "cloud.cdc.sales.events.dlq",
+    "errors.deadletterqueue.context.headers.enable": "true",
+
+    "heartbeat.interval.ms": "30000"
+  }
+}

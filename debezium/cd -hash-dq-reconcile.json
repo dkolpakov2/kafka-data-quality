@@ -1,0 +1,37 @@
+{
+  "name": "Debezium CDC -> Hash -> DQ -> Reconcile",
+  "paragraphs": [
+    {
+      "title": "01 - CDC Source (Cloud Cassandra via Debezium)",
+      "text": "%flink.ssql\nCREATE TABLE cloud_cdc_raw (\n  op STRING,\n  ts_ms BIGINT,\n  `after` ROW<id STRING, amount DOUBLE, event_ts TIMESTAMP(3)>,\n  source ROW<keyspace STRING, table_name STRING, dc STRING>\n) WITH (\n  'connector' = 'kafka',\n  'topic' = 'cloud.cdc.sales.events',\n  'properties.bootstrap.servers' = 'kafka:9092',\n  'format' = 'json'\n);\n\n-- quick peek\nSELECT `after`.id, `after`.event_ts FROM cloud_cdc_raw LIMIT 5;"
+    },
+    {
+      "title": "02 - Flatten and Compute Canonical Hash (Cloud)",
+      "text": "%flink.ssql\nCREATE VIEW cloud_events_flat AS\nSELECT\n  `after`.id AS id,\n  `after`.amount AS amount,\n  `after`.event_ts AS event_ts,\n  source.dc AS source_dc\nFROM cloud_cdc_raw\nWHERE op IN ('c','u');\n\nCREATE VIEW cloud_hashed AS\nSELECT\n  id,\n  SHA2(CONCAT_WS('|', COALESCE(id,'NULL'), COALESCE(CAST(amount AS STRING),'NULL'), CAST(event_ts AS STRING)), 256) AS row_hash,\n  event_ts,\n  source_dc\nFROM cloud_events_flat;\n\nSELECT id, row_hash FROM cloud_hashed LIMIT 5;"
+    },
+    {
+      "title": "03 - DQ Rules (Cloud) and route",
+      "text": "%flink.ssql\nCREATE VIEW cloud_dq AS\nSELECT\n  *,\n  CASE\n    WHEN id IS NULL THEN 'FAIL_ID_NULL'\n    WHEN amount IS NULL THEN 'FAIL_AMOUNT_NULL'\n    WHEN amount < 0 THEN 'FAIL_NEG_AMOUNT'\n    WHEN event_ts < (CURRENT_TIMESTAMP - INTERVAL '7' DAY) THEN 'WARN_OLD_EVENT'\n    ELSE 'PASS'\n  END AS dq_status\nFROM cloud_hashed;\n\nSELECT id, dq_status FROM cloud_dq LIMIT 5;"
+    },
+    {
+      "title": "04 - Publish Cloud Hash Audit Topic",
+      "text": "%flink.ssql\nCREATE TABLE cloud_hash_topic (\n  id STRING,\n  row_hash STRING,\n  source_dc STRING,\n  event_ts TIMESTAMP(3)\n) WITH (\n  'connector' = 'kafka',\n  'topic' = 'cloud_hash_events',\n  'properties.bootstrap.servers' = 'kafka:9092',\n  'format' = 'json'\n);\n\nINSERT INTO cloud_hash_topic\nSELECT id, row_hash, source_dc, event_ts FROM cloud_dq WHERE dq_status = 'PASS';"
+    },
+    {
+      "title": "05 - Consume OnPrem Hash Topic (produced by onprem pipeline)",
+      "text": "%flink.ssql\nCREATE TABLE onprem_hash_topic (\n  id STRING,\n  row_hash STRING,\n  source_dc STRING,\n  event_ts TIMESTAMP(3)\n) WITH (\n  'connector' = 'kafka',\n  'topic' = 'onprem_hash_events',\n  'properties.bootstrap.servers' = 'kafka:9092',\n  'format' = 'json'\n);\n\nSELECT id, row_hash FROM onprem_hash_topic LIMIT 5;"
+    },
+    {
+      "title": "06 - Reconciliation (Windowed Join tolerant to delays)",
+      "text": "%flink.ssql\nCREATE VIEW reconciliation AS\nSELECT\n  COALESCE(o.id, c.id) AS id,\n  o.row_hash AS onprem_hash,\n  c.row_hash AS cloud_hash,\n  CASE\n    WHEN o.row_hash IS NULL THEN 'MISSING_ONPREM'\n    WHEN c.row_hash IS NULL THEN 'MISSING_CLOUD'\n    WHEN o.row_hash <> c.row_hash THEN 'DRIFT'\n    ELSE 'MATCH'\n  END AS status,\n  COALESCE(o.event_ts, c.event_ts) AS event_ts\nFROM (\n  SELECT id, row_hash, event_ts FROM onprem_hash_topic\n) o\nFULL OUTER JOIN (\n  SELECT id, row_hash, event_ts FROM cloud_hash_topic\n) c\nON o.id = c.id\nAND o.event_ts BETWEEN c.event_ts - INTERVAL '10' MINUTE AND c.event_ts + INTERVAL '10' MINUTE;\n\nSELECT * FROM reconciliation WHERE status <> 'MATCH' LIMIT 100;"
+    },
+    {
+      "title": "07 - Persist Reconciliation Mismatches to Audit Topic",
+      "text": "%flink.ssql\nCREATE TABLE dq_reconciliation_audit (\n  id STRING,\n  onprem_hash STRING,\n  cloud_hash STRING,\n  status STRING,\n  audit_ts TIMESTAMP(3)\n) WITH (\n  'connector' = 'kafka',\n  'topic' = 'dq_reconciliation_audit',\n  'properties.bootstrap.servers' = 'kafka:9092',\n  'format' = 'json'\n);\n\nINSERT INTO dq_reconciliation_audit\nSELECT id, onprem_hash, cloud_hash, status, CURRENT_TIMESTAMP FROM reconciliation WHERE status <> 'MATCH';"
+    },
+    {
+      "title": "08 - Counters: Valid/Invalid/Drift per minute",
+      "text": "%flink.ssql\nCREATE TABLE dq_metrics_valid (\n  job_name STRING,\n  metric_ts TIMESTAMP(3),\n  valid_count BIGINT\n) WITH (\n  'connector' = 'kafka',\n  'topic' = 'dq_metrics_valid',\n  'properties.bootstrap.servers' = 'kafka:9092',\n  'format' = 'json'\n);\n\nINSERT INTO dq_metrics_valid\nSELECT 'cloud_dq_job' AS job_name, TUMBLE_END(event_ts, INTERVAL '1' MINUTE) AS metric_ts, COUNT(*) AS valid_count\nFROM cloud_dq WHERE dq_status = 'PASS' GROUP BY TUMBLE(event_ts, INTERVAL '1' MINUTE);\n\nCREATE TABLE dq_metrics_invalid (\n  job_name STRING,\n  metric_ts TIMESTAMP(3),\n  invalid_count BIGINT\n) WITH (\n  'connector' = 'kafka',\n  'topic' = 'dq_metrics_invalid',\n  'properties.bootstrap.servers' = 'kafka:9092',\n  'format' = 'json'\n);\n\nINSERT INTO dq_metrics_invalid\nSELECT 'cloud_dq_job' AS job_name, TUMBLE_END(event_ts, INTERVAL '1' MINUTE') AS metric_ts, COUNT(*) AS invalid_count\nFROM cloud_dq WHERE dq_status <> 'PASS' GROUP BY TUMBLE(event_ts, INTERVAL '1' MINUTE);"
+    }
+  ]
+}
