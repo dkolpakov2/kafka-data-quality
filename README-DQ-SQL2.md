@@ -166,7 +166,13 @@ CREATE TABLE dq_metrics_cassandra (
     - Kafka topic
     - Cassandra sink hosts + datacenter
     - job_name string
->>     
+>>  Flink_DQ_CLoud.json
+    (Minimal Changes)
+      Only update:
+        Kafka topic
+        Cassandra sink hosts + datacenter
+        job_name string
+    Everything else is reusable !!!
 
 =====================================
 ## Datadog
@@ -193,7 +199,17 @@ Target:
 7. Cloud & On-Prem matching
 
 ## Next Steps:
-
+  - Import the Zeppelin notebooks (Zeppelin UI → Import note → upload JSON).
+  - Place rules.yaml alongside tools/rules_to_sql.py and run:
+  - python3 tools/rules_to_sql.py rules.yaml > dq_results.sql
+    — or push directly into Zeppelin with --push-to-zeppelin.
+  - Add ci/validate_flink_sql.sh into your CI pipeline before deploying Zeppelin SQL notebooks.
+  - Wire Kafka topics and update hosts/datacenter options in the notebooks.
+  - Deploy Datadog agent or consume the metrics topics to feed dashboards.
+  - If you want, I can:
+  - Wire the generator to fetch rules.yaml from your Git repo automatically.
+  - Convert datadog_dq_dashboard.json into an importable Datadog dashboard via API calls.
+  - Add unit tests for rules_to_sql.py.
 
 -------------------------------------
 ## 3. Data Quality Rules in Flink SQL
@@ -479,8 +495,8 @@ SELECT
 FROM onprem_hash o
 FULL OUTER JOIN cloud_hash c
 ON o.id = c.id
-AND o.event_ts BETWEEN c.event_ts - INTERVAL '10' MINUTE
-                    AND c.event_ts + INTERVAL '10' MINUTE;
+AND o.event_ts BETWEEN c.event_ts - INTERVAL '1' MINUTE
+                   AND c.event_ts + INTERVAL '1' MINUTE;
 
 ## 6 Step 5 — Persist Audit Results
 >> SQL
@@ -559,3 +575,5 @@ $users_audit$ LANGUAGE plpgsql;
 CREATE TRIGGER users_audit
 AFTER INSERT OR UPDATE OR DELETE ON users
     FOR EACH ROW EXECUTE FUNCTION process_users_audit();
+========== DONE ==================================================
+==================================================================

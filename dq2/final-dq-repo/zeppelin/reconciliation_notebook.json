@@ -1,0 +1,17 @@
+{
+  "name": "Flink_DQ_Reconciliation",
+  "paragraphs": [
+    {
+      "title": "1 - OnPrem hashes view",
+      "text": "%flink.ssql\nCREATE VIEW IF NOT EXISTS cass_onprem_hashes AS\nSELECT id, row_hash FROM cassandra_onprem;"
+    },
+    {
+      "title": "2 - Cloud hashes view",
+      "text": "%flink.ssql\nCREATE VIEW IF NOT EXISTS cass_cloud_hashes AS\nSELECT id, row_hash FROM cassandra_cloud;"
+    },
+    {
+      "title": "3 - Reconciliation (find drift)",
+      "text": "%flink.ssql\nCREATE VIEW reconciliation AS\nSELECT COALESCE(a.id,b.id) AS id, a.row_hash AS onprem_hash, b.row_hash AS cloud_hash,\nCASE WHEN a.row_hash IS NULL THEN 'MISSING_IN_ONPREM'\nWHEN b.row_hash IS NULL THEN 'MISSING_IN_CLOUD'\nWHEN a.row_hash <> b.row_hash THEN 'DRIFT' ELSE 'OK' END AS status\nFROM cass_onprem_hashes a FULL OUTER JOIN cass_cloud_hashes b ON a.id = b.id;\n\nSELECT * FROM reconciliation WHERE status <> 'OK' LIMIT 200;"
+    }
+  ]
+}
