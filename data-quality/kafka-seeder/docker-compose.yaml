@@ -1,0 +1,31 @@
+services:
+  # ===========================================================
+  # KAFKA SEEDER
+  # ===========================================================
+  kafka-seeder:
+    image: python:3.10-slim
+    container_name: kafka-seeder
+    depends_on:
+      - kafka
+    command: [ "python", "/app/seeder.py" ]
+    environment:
+      KAFKA_BROKER: "kafka:9092"
+      KAFKA_TOPIC: "topic_onprem_sales"
+      MESSAGE_RATE: "1"         # messages per second
+    volumes:
+      - ./kafka-seeder:/app
+  # # ============================================================
+  # # KAFKA SEEDER CLOUD
+  # # ============================================================
+  # kafka-seeder-cloud:
+  #   image: python:3.10-slim
+  #   container_name: kafka-seeder-cloud
+  #   depends_on:
+  #     - kafka
+  #   command: [ "python", "/app/seeder.py" ]
+  #   environment:
+  #     KAFKA_BROKER: "kafka:9092"
+  #     KAFKA_TOPIC: "topic_cloud_sales"
+  #     MESSAGE_RATE: "0.5"
+  #   volumes:
+  #     - ./kafka-seeder:/app

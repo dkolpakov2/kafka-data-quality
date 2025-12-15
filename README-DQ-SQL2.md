@@ -1,9 +1,9 @@
 ## Kafka ->Flink SQL + Zeppelin + Cassandra DC (Cloud/onPrem)
 >> One Flink job → one Kafka topic
-✅ One Flink job → exactly one Cassandra data center
-✅ No cross-DC writes
-✅ Full Data Quality (DQ) + hashing
-✅ Drift validation without dual connections
+- One Flink job → exactly one Cassandra data center
+- No cross-DC writes
+- Full Data Quality (DQ) + hashing
+- Drift validation without dual connections
 
                        ┌─────────────┐
                        │ Kafka       │
@@ -29,7 +29,77 @@
 | Zeppelin compatibility |  Native                  |
 | Reduced risk           |  No code path errors     |
 -----------------------------------------------------
+## Result:
+## 1 Two independent Cassandra datacenters
+  - DC_ONPREM
+  - DC_AZURE
+# 2 Zeppelin notebooks you already imported
+# 3 Flink SQL job execution via Zeppelin
+  docker-compose up -d --scale taskmanager=4
+# 4 Kafka source → Flink SQL → Cassandra sinks
+# 5 DLQ topics
+------------------------
+A Makefile wrapping the entire deploy:
+>> 
+  make up
+  make seed-kafka
+  make run-dq
+-------------------------
+## Usage notes
+  1. Start the local stack:
+    # > (from repo root where your docker-compose.yml lives).
+      docker-compose up -d --build 
+    # push image
+      docker image push [OPTIONS] NAME[:TAG]
+      docker image tag confluentinc/cp-zookeeper:7.5.0 zookeeper:7.5.0
+    ## WARN error when run in Zeppelin 
 
+    # Shot Down docker:
+      docker-compose down -v
+      update docker-compose.yaml add Flink /opt/flink to env
+
+      # Now Zeppelin will find /opt/flink/bin/sql-client.sh and the Flink interpreter will WORK.
+    # NOT WORKING: in Zeppelin Interpreter possibly add:  
+      FLINK_CONF_DIR = /opt/flink/conf
+    # Then need to install  Zeppilin Flink Interpreter Plugin
+
+
+   # Add the Flink jar to kafka-data-quality/dq2 folder to mount inside Zeppilin :
+      - Pool Flink to local to be in Zeppilin access
+        wget https://archive.apache.org/dist/flink/flink-1.17.1/flink-1.17.1-bin-scala_2.12.tgz
+        tar -xzf flink-1.17.1-bin-scala_2.12.tgz
+
+      - new folder will be created:
+        /kafka-data-quality/dq2/flink-1.17.1
+    # Fix Step 2 — Install Zeppelin Flink Interpreter Plugin
+      - add Dockerfile to docker-compose:
+    >> yaml
+      zeppelin:
+        build:
+          context: .
+          dockerfile: Dockerfile-zeppelin-flink
+    # Fix Step 3 — Enable Interpreter Group in Zeppelin UI
+        Open Zeppelin UI → Interpreter → search “Flink”
+          We should now see:
+            flink
+            flink.sql
+            flink.scala
+            flink.py
+   # Restart Docker:
+         docker-compose up -d    ## --build
+
+
+    make build-jar (requires Maven and the Java project present).
+  3. Submit jobs:
+    make submit-onprem or make submit-cloud (ensure FLINK_REST env points to JobManager).
+  4. CI validation:
+    make validate-ci (runs simple checks on Zeppelin SQL notebooks).
+  5. Datadog:
+    Use monitoring/datadog_dq_dashboard.json & monitoring/datadog_monitors.json to import into Datadog.
+
+=============================================================
+
+Metrics topics for Datadog
 ## Flink SQL Guarantees “One DC Only”
  -Flink SQL itself cannot dynamically switch Cassandra DCs.
     - The DC is fixed in the Cassandra table connector options.
@@ -191,6 +261,8 @@ CREATE TABLE dq_metrics_cassandra (
 =====================================================
 Target:
 1. Flink SQL only	
+  docker-compose up -d --scale taskmanager=4
+
 2. One Cassandra DC per job	(DDL pinned)
 3. Valid row counter
 4. Invalid row counter
@@ -206,7 +278,7 @@ Target:
   - Add ci/validate_flink_sql.sh into your CI pipeline before deploying Zeppelin SQL notebooks.
   - Wire Kafka topics and update hosts/datacenter options in the notebooks.
   - Deploy Datadog agent or consume the metrics topics to feed dashboards.
-  - If you want, I can:
+  Optional next steps:
   - Wire the generator to fetch rules.yaml from your Git repo automatically.
   - Convert datadog_dq_dashboard.json into an importable Datadog dashboard via API calls.
   - Add unit tests for rules_to_sql.py.
@@ -289,6 +361,15 @@ Each notebook:
     Runs one environment only
     Is config-locked
     Is reviewable & auditable
+## Set in Zeppelin Interpreter Settings:
+  1. Navigate to the Interpreter menu in the Zeppelin UI.
+  2. Find the flink interpreter and click edit.
+  3. Add a new property or modify the existing one with FLINK_HOME as the name and the path to your Flink directory (e.g., /opt/flink or C:\flink_home) as the value.
+  4. Save the settings and restart the interpreter.
+## Set in Environment Variables (for all interpreters/system-wide):
+  1. Edit the zeppelin-env.sh file located in the $ZEPPELIN_HOME/conf directory.
+  2. Add the line export FLINK_HOME=/path/to/your/flink/home.
+  3. Restart the entire Zeppelin server for the changes to take effect    
 ---------------------    
  01_sources.sql
  02_dq_rules.sql
@@ -304,12 +385,178 @@ Each notebook:
 2. >> Add ci/validate_flink_sql.sh into your CI pipeline before deploying Zeppelin SQL notebooks.
 
 3. >>Wire Kafka topics and update hosts/datacenter options in the notebooks.
------------------
+## Create Kafka Topics:
+ 3.1 Get shell into Kafka container:
+    docker exec -it kafka bash
+ 3.2 Produce to a topic:
+    kafka-console-producer --broker-list kafka:9092 --topic topic_onprem_sales
+
+ 3.3 Create messages:
+    {"id":"1","event_ts":"2025-01-01T00:00:00Z","value":100}
+    {"id":"2","event_ts":"2025-01-01T00:00:01Z","value":-50}
+## Option 2 — Create topic first (if needed)
+    Inside Kafka container:
+    >> kafka-topics --create --topic topic_onprem_sales \
+      --bootstrap-server kafka:9092 --replication-factor 1 --partitions 1
+## Option 3 — Produce messages from host (Docker Desktop)
+    docker exec -it kafka \
+    kafka-console-producer --broker-list kafka:9092 --topic topic_onprem_sales
+## Option 4 — Produce messages with Python (very useful for testing)
+  >> pip install kafka-python
+  >> run: python producer.py
+  ------------------- producer.py -----------------------
+    from kafka import KafkaProducer
+    import json
+    import time
+
+    p = KafkaProducer(
+        bootstrap_servers="localhost:9092",
+        value_serializer=lambda v: json.dumps(v).encode("utf-8")
+    )
+
+    messages = [
+        {"id": "10", "event_ts": "2025-01-01T00:00:00Z", "value": 100},
+        {"id": "11", "event_ts": "2025-01-01T00:00:05Z", "value": -20},
+    ]
+
+    for m in messages:
+        print("Sending:", m)
+        p.send("topic_onprem_sales", m)
+
+    p.flush()
+-------------------
+Option 5 — Post messages via REST Proxy (if you want HTTP)
+  If you add the Confluent REST Proxy to your docker-compose:    
+>>
+  rest-proxy:
+    image: confluentinc/cp-kafka-rest:7.5.0
+    depends_on:
+      - kafka
+    ports:
+      - "8082:8082"
+    environment:
+      KAFKA_REST_BOOTSTRAP_SERVERS: "kafka:9092"
+      KAFKA_REST_LISTENERS: "http://0.0.0.0:8082"
+--
+>> Then you can POST messages like this:
+  curl -X POST -H "Content-Type: application/vnd.kafka.json.v2+json" \
+  --data '{"records":[{"value":{"id":"3","value":15}}]}' \
+  http://localhost:8082/topics/topic_onprem_sales
+-------
++ Step To Add Kafka Seeder:
+  docker-compose up -d kafka-seeder
+  ## Monitor
+  docker logs -f kafka-seeder
+
+------------------
+## I >> Check Kafka Messages after checking kafka-seeder =>10 messages:
+10. 
+10.1. Option 1: Use kafka-console-consumer:
+    Enter into Kafka container
+    docker container ls --filter "status=running"
+  >> docker exec -it kafka bash
+  >> docker exec -it <KAFKA-container-id> BASH
+  >> kafka-console-consumer \
+      --bootstrap-server kafka:9092 \
+      --topic topic_onprem_sales \
+      --from-beginning
+  >> 
+10.2 Option 2: Option B — Verify topic exists
+  >> bash inside container:
+  >> kafka-topics --bootstrap-server kafka:9092 --list
+
+10.3 Option 3: Inspect consumer groups (Flink)
+  >> bash:
+  kafka-consumer-groups \
+  --bootstrap-server kafka:9092 \
+  --list
+----------
+# II >> # Check Flink group offsets:
+  kafka-consumer-groups \
+  --bootstrap-server kafka:9092 \
+  --group flink-dq-onprem \
+  --describe
+# Check Flink Job Status
+# Open Flink UI
+http://localhost:8081
+ -- Verify:
+  Job is RUNNING
+  No FAILED tasks
+  Kafka source offsets advancing
+-----------------------------------
+## III >> Check Cassandra Entries
+- Enter Cassandra container 
+docker exec -it cassandra-onprem cqlsh
+  >> List keyspaces:
+    DESCRIBE KEYSPACES;
+  >> Use your keyspace:
+    USE dq_keyspace;
+  >> List tables:
+    DESCRIBE TABLES;
+  >> Query data:
+    SELECT * FROM sales_events LIMIT 10;
+  >> Count records:
+    SELECT COUNT(*) FROM sales_events;
+# 
+--------------------------------------
+## IV >> Validate Data Quality Counters
+# If you created counters in Flink SQL:
+# Check via Flink UI
+    Task → Metrics -> Look for:
+        - dq_valid_count
+        - dq_invalid_count
+  >> REST:
+  curl http://localhost:8081/jobs/<jobid>/metrics
+
+---------------------------------------
+## V >> Compare On-Prem vs Cloud Cassandra
+# Repeat same steps for cloud Cassandra container:
+docker exec -it cassandra-cloud cqlsh
+USE dq_keyspace;
+SELECT COUNT(*) FROM sales_events;
+
+---------------------------------------
+## VI >> Optional (Highly Recommended) — Add Kafka UI
+# Add to docker-compose
+kafdrop:
+  image: obsidiandynamics/kafdrop
+  depends_on:
+    - kafka
+  ports:
+    - "9000:9000"
+  environment:
+    KAFKA_BROKERCONNECT: kafka:9092
+## GO to UI and Browse for Topics/Messages/Offsets/Schemas:
+  http://localhost:9000
+
+## Zeppelin: http://localhost:8080/#/notebook/2MD56Q4ZV
+>> http://localhost:8080/#/notebook/2MD56Q4ZV
+
+
+#
+# --------------------------------------------------------------------
+## NEXT:
+ - Add hash-based reconciliation queries between Cassandra DCs
+ - Add DQ dashboards in Datadog
+ - Add automatic data drift detection
+ - Add Zeppelin SQL notebooks to validate counts visually
+
+====================================================================
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+====================================================================
+## NEST STEPS MONTORING
+## DATA DOG Service
+====================================================================
+
+----------------
 Deploy Datadog agent or consume the metrics topics to feed dashboards.
 - Generate Zeppelin JSON notebooks (importable)
 - Provide CI/CD validation scripts
 - Produce final SVG architecture diagram
 - Convert your DQ YAML → Flink SQL automatically
+
+4cd ... Start all APPS in docker:
+    >>    docker-compose up -d --build
 
 ==================================================================
 ## >> Prevent Common Mistakes (Anti-Patterns):
@@ -335,9 +582,32 @@ Deploy Datadog agent or consume the metrics topics to feed dashboards.
 4. Periodic full table scans - Non-scalable, disruptive
 
 
+
+
+
+### OUT OF SCOPE
+
+## remove cached errored file
+  git rm --cached data-quality/flink-1.17.1/lib/flink-dist-1.17.1.jar
+  echo "*.jar" >> .gitignore
+  git add .gitignore
+  git commit -m "Ignore JAR artifacts"
+  ## Remove jar form ALL history
+  pip install git-filter-repo
+  git filter-repo --path flink-dist-1.17.1.jar --invert-paths
+  git push origin master --force
+#
+#
+#
+#
+#
+#
+#
+===================================================================
+Out of scope for sometime, issues exist (sloweness )
 ===================================================================
 ## Architecture
-Cassandra -> Kafka- Flink SQL
+Cassandra - DEBEZIUM -> Kafka- Flink SQL
 -------------------------------------------------------------------
 1. No direct DB-to-DB connection
 2. Immutable audit trail
