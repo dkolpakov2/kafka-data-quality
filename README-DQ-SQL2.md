@@ -52,6 +52,39 @@ A Makefile wrapping the entire deploy:
     # push image
       docker image push [OPTIONS] NAME[:TAG]
       docker image tag confluentinc/cp-zookeeper:7.5.0 zookeeper:7.5.0
+      docker image tag obsidiandynamics/kafdrop kafdrop:latest
+      docker image 
+
+## What the Error Means => WSL is already installed
+# The service cannot be started because it is disabled
+  -- Means one (or more) of these is disabled:
+  Windows Subsystem for Linux
+  Virtual Machine Platform
+  Hyper-V
+  BIOS virtualization
+  WSL service stopped      
+  ## FIX: Open PowerShell as Administrator and run:
+  1.
+  >> dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart
+  >> dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart
+  for Docker Desktop:
+  >> dism.exe /online /enable-feature /featurename:Hyper-V /all /norestart
+  2. Restart Windows (MANDATORY)
+  3. Verify by powerShell:
+    >> sc query LxssManager
+    # Output:
+      STATE  : 4  RUNNING
+  4. Check BIOS Virtualization (VERY COMMON ISSUE)
+    Enable in BIOS:
+      Intel: Intel VT-x
+      AMD: SVM Mode
+    4.1. check 
+      >> systeminfo | findstr /i "Virtualization"
+   5. Set WSL2 as Default
+      >> wsl --set-default-version 2
+      >> wsl --status
+      >> wsl --list --online
+  ---------------------------------------------
     ## WARN error when run in Zeppelin 
 
     # Shot Down docker:
@@ -361,6 +394,8 @@ Each notebook:
     Runs one environment only
     Is config-locked
     Is reviewable & auditable
+
+## FIX: FLINK_HOME is not specified    
 ## Set in Zeppelin Interpreter Settings:
   1. Navigate to the Interpreter menu in the Zeppelin UI.
   2. Find the flink interpreter and click edit.
@@ -544,7 +579,7 @@ kafdrop:
 ====================================================================
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 ====================================================================
-## NEST STEPS MONTORING
+## NEXT STEPS MONTORING
 ## DATA DOG Service
 ====================================================================
 
