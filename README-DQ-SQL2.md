@@ -53,7 +53,8 @@ A Makefile wrapping the entire deploy:
       docker image push [OPTIONS] NAME[:TAG]
       docker image tag confluentinc/cp-zookeeper:7.5.0 zookeeper:7.5.0
       docker image tag obsidiandynamics/kafdrop kafdrop:latest
-      docker image 
+      docker image tag python:3.10-slim kafka-seeds:latest
+	  docker image tag cassandra:4.1  cassandra_onprem:4.1
 
 ## What the Error Means => WSL is already installed
 # The service cannot be started because it is disabled
@@ -71,9 +72,11 @@ A Makefile wrapping the entire deploy:
   >> dism.exe /online /enable-feature /featurename:Hyper-V /all /norestart
   2. Restart Windows (MANDATORY)
   3. Verify by powerShell:
-    >> sc query LxssManager
+		>> sc query LxssManager
     # Output:
       STATE  : 4  RUNNING
+	# If Stopped then run:
+		>> sc start LxssManager	
   4. Check BIOS Virtualization (VERY COMMON ISSUE)
     Enable in BIOS:
       Intel: Intel VT-x
@@ -423,6 +426,48 @@ Each notebook:
 ## Create Kafka Topics:
  3.1 Get shell into Kafka container:
     docker exec -it kafka bash
+
+ 3.1.2. Delete Topic to clean before:
+	kafka-topics \
+		--bootstrap-server kafka:9092 \
+		--delete \
+		--topic topic_onprem_sales
+  3.1.3. Create topic:
+	  kafka-topics \
+	  --bootstrap-server kafka:9092 \
+	  --create \
+	  --topic topic_onprem_sales \
+	  --partitions 1 \
+	  --replication-factor 1
+  #### If Retention in loop 1 sec:
+	kafka-configs \
+	  --bootstrap-server kafka:9092 \
+	  --entity-type topics \
+	  --entity-name topic_onprem_sales \
+	  --alter \
+	  --add-config retention.ms=1000  
+	## Then remove retention:
+	kafka-configs \
+	  --bootstrap-server kafka:9092 \
+	  --entity-type topics \
+	  --entity-name topic_onprem_sales \
+	  --alter \
+	  --delete-config retention.ms
+	## Verify Topic is Empty:
+	kafka-console-consumer \
+	  --bootstrap-server kafka:9092 \
+	  --topic topic_onprem_sales \
+	  --from-beginning
+	## Consumer offsets are NOT reset automatically.
+		## To reset consumer offsets:
+		kafka-consumer-groups \
+		  --bootstrap-server kafka:9092 \
+		  --group flink-dq-onprem \
+		  --reset-offsets \
+		  --to-earliest \
+		  --execute \
+		  --topic topic_onprem_sales
+------------ 
  3.2 Produce to a topic:
     kafka-console-producer --broker-list kafka:9092 --topic topic_onprem_sales
 
