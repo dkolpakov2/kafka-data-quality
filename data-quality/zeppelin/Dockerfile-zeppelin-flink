@@ -1,0 +1,13 @@
+FROM apache/zeppelin:0.10.1
+
+USER root
+
+RUN apt-get update && apt-get install -y curl
+
+# Download Zeppelin full distribution (includes Flink interpreter)
+RUN curl -L https://archive.apache.org/dist/zeppelin/zeppelin-0.10.1/zeppelin-0.10.1-bin-all.tgz \
+    | tar -xz --strip=1 -C /opt/zeppelin
+
+ENV FLINK_HOME=/opt/flink
+
+USER zeppelin

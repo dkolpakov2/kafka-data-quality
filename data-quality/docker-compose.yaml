@@ -140,12 +140,12 @@ services:
   # ============================================================
   zeppelin:
     image: apache/zeppelin:0.10.1
-    # build:
-    #   context: .
-    #   dockerfile: Dockerfile-zeppelin-flink
+     build:
+       context: .
+       dockerfile: zeppelin/Dockerfile-zeppelin-flink
     depends_on:
       - jobmanager
-      - taskmanager
+    #  - taskmanager
     ports:
       - "8080:8080"
     environment:
