@@ -1,0 +1,41 @@
+version: "3.8"
+
+services:
+  jobmanager:
+    image: flink:1.17.1
+    container_name: jobmanager
+    command: jobmanager
+    ports:
+      - "8081:8081"
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: jobmanager
+
+  taskmanager:
+    image: flink:1.17.1
+    command: taskmanager
+    depends_on:
+      - jobmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 4
+    deploy:
+      replicas: 2
+
+  sql-gateway:
+    image: flink:1.17.1
+    container_name: sql-gateway
+    depends_on:
+      - jobmanager
+    ports:
+      - "8083:8083"
+    command: >
+      bash -c "
+      ./bin/sql-gateway.sh start
+      -Dsql-gateway.endpoint.rest.address=0.0.0.0
+      -Dsql-gateway.endpoint.rest.port=8083
+      -Dexecution.target=remote
+      -Dexecution.remote.host=jobmanager
+      -Dexecution.remote.port=8081
+      "

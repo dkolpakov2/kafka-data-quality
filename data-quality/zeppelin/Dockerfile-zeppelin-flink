@@ -5,9 +5,19 @@ USER root
 RUN apt-get update && apt-get install -y curl
 
 # Download Zeppelin full distribution (includes Flink interpreter)
-RUN curl -L https://archive.apache.org/dist/zeppelin/zeppelin-0.10.1/zeppelin-0.10.1-bin-all.tgz \
-    | tar -xz --strip=1 -C /opt/zeppelin
+#RUN curl -L https://archive.apache.org/dist/zeppelin/zeppelin-0.10.1/zeppelin-0.10.1-bin-all.tgz \
+#    | tar -xz --strip=1 -C /opt/zeppelin
+
+RUN sed -i 's/^# zeppelin.interpreter.shell/zeppelin.interpreter.shell/' \
+    /opt/zeppelin/conf/zeppelin-site.xml
+	
+# Install Flink inside Zeppelin
+RUN curl -L https://archive.apache.org/dist/flink/flink-1.17.1/flink-1.17.1-bin-scala_2.12.tgz \
+    | tar -xz -C /opt
+
+#ENV FLINK_HOME=/opt/flink-1.17.1
 
 ENV FLINK_HOME=/opt/flink
 
-USER zeppelin
+# Doesn't support user zeppelin, keep root user
+#USER zeppelin

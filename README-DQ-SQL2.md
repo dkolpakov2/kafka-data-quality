@@ -55,6 +55,7 @@ A Makefile wrapping the entire deploy:
       docker image tag obsidiandynamics/kafdrop kafdrop:latest
       docker image tag python:3.10-slim kafka-seeds:latest
 	  docker image tag cassandra:4.1  cassandra_onprem:4.1
+	  docker image tag apache/zeppelin:0.10.1 zeppelin:0.10.1
 
 ## What the Error Means => WSL is already installed
 # The service cannot be started because it is disabled
@@ -88,25 +89,55 @@ A Makefile wrapping the entire deploy:
       >> wsl --status
       >> wsl --list --online
   ---------------------------------------------
-    ## WARN error when run in Zeppelin 
+  
+============================== Flink inside the Zeppelin container  ==============================  
+### ATTN: Zeppelin MUST install Flink inside the Zeppelin container.
+		This will avoid all Docker volume below issues.
+==================================================================================================		
+		
+	## WARN error when run in Zeppelin 
 
     # Shot Down docker:
       docker-compose down -v
-      update docker-compose.yaml add Flink /opt/flink to env
+      update docker-compose.yaml add Flink 
+	  zeppelin:
+		build:
+			context: .
+			dockerfile: Dockerfile-zeppelin-flink
+		container_name: zeppelin
+		ports:
+			- "8080:8080"
+		  environment:
+			ZEPPELIN_JAVA_OPTS: >
+			  -DFLINK_HOME=/opt/flink-1.17.1
+			  -Dzeppelin.flink.useLocalFlink=true
+		  depends_on:
+			- jobmanager		
+	# next: docker-compose down -v
+	 docker-compose build --no-cache zeppelin
+	 docker-compose up -d
+	 
 
       # Now Zeppelin will find /opt/flink/bin/sql-client.sh and the Flink interpreter will WORK.
     # NOT WORKING: in Zeppelin Interpreter possibly add:  
       FLINK_CONF_DIR = /opt/flink/conf
-    # Then need to install  Zeppilin Flink Interpreter Plugin
+    # Then neeVerify Flink Interpreter Files
+		Inside Zeppelin container:
+			docker exec -it zeppelin ls /opt/zeppelin/interpreter/flink
+		You should see JARs.
+		!!! If empty → interpreter not installed.
+	# OR Other way:
+		docker exec -it zeppelin ls $FLINK_HOME/lib | grep flink-dist	
 
-
-   # Add the Flink jar to kafka-data-quality/dq2 folder to mount inside Zeppilin :
+		echo $FLINK_HOME
+		ls $FLINK_HOME/lib | grep flink-dist
+   # Add the Flink jar to kafka-data-quality/data-quality/flink-1.17.1 folder to mount inside Zeppilin :
       - Pool Flink to local to be in Zeppilin access
         wget https://archive.apache.org/dist/flink/flink-1.17.1/flink-1.17.1-bin-scala_2.12.tgz
         tar -xzf flink-1.17.1-bin-scala_2.12.tgz
 
       - new folder will be created:
-        /kafka-data-quality/dq2/flink-1.17.1
+        /kafka-data-quality/data-quality/flink-1.17.1
     # Fix Step 2 — Install Zeppelin Flink Interpreter Plugin
       - add Dockerfile to docker-compose:
     >> yaml
@@ -117,13 +148,14 @@ A Makefile wrapping the entire deploy:
     # Fix Step 3 — Enable Interpreter Group in Zeppelin UI
         Open Zeppelin UI → Interpreter → search “Flink”
           We should now see:
-            flink
-            flink.sql
-            flink.scala
-            flink.py
+            flink: %flink, %flink.bsql, %flink.ssql, %flink.pyflink, %flink.ipyflink
    # Restart Docker:
-         docker-compose up -d    ## --build
+		docker-compose ps   ## will show all running containers
+		docker-compose down
+		docker-compose build zeppelin
 
+        docker-compose up -d    ## --build
+		docker-compose restart zeppelin
 
     make build-jar (requires Maven and the Java project present).
   3. Submit jobs:
@@ -268,6 +300,9 @@ CREATE TABLE dq_metrics_cassandra (
 ====================================
 ## 2. Zeppelin Notebook JSON:
 >> Flink_DQ_OnPrem.json
+
+
+
 >> Cloud Version change: 
     - Kafka topic
     - Cassandra sink hosts + datacenter
@@ -400,14 +435,19 @@ Each notebook:
 
 ## FIX: FLINK_HOME is not specified    
 ## Set in Zeppelin Interpreter Settings:
+## Flink Plugins in Interpreter UI: %flink.ssql, %flink.pyflink, %flink.bsql
   1. Navigate to the Interpreter menu in the Zeppelin UI.
   2. Find the flink interpreter and click edit.
   3. Add a new property or modify the existing one with FLINK_HOME as the name and the path to your Flink directory (e.g., /opt/flink or C:\flink_home) as the value.
   4. Save the settings and restart the interpreter.
 ## Set in Environment Variables (for all interpreters/system-wide):
   1. Edit the zeppelin-env.sh file located in the $ZEPPELIN_HOME/conf directory.
-  2. Add the line export FLINK_HOME=/path/to/your/flink/home.
+  2. Add the line export FLINK_HOME=/path/to/your/flink/home.  /opt/flink
   3. Restart the entire Zeppelin server for the changes to take effect    
+  
+##  Inside Zeppelin container:
+	docker exec -it zeppelin ls /opt/zeppelin/interpreter/flink
+
 ---------------------    
  01_sources.sql
  02_dq_rules.sql

@@ -140,7 +140,7 @@ services:
   # ============================================================
   zeppelin:
     image: apache/zeppelin:0.10.1
-     build:
+    build:
        context: .
        dockerfile: zeppelin/Dockerfile-zeppelin-flink
     depends_on:
@@ -150,9 +150,11 @@ services:
       - "8080:8080"
     environment:
       ZEPPELIN_JAVA_OPTS: >
+        -Dzeppelin.flink.useLocalFlink=true
         -Dzeppelin.flink.ui.enabled=true
         -Dzeppelin.flink.run.as.session=true
         -DFLINK_HOME=/opt/flink
+        -Dzeppelin.flink.runMode=local
     volumes:
       - ./flink-1.17.1:/opt/flink
       - ./zeppelin/notebooks:/zeppelin/notebook
