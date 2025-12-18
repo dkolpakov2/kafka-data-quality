@@ -344,9 +344,18 @@ Target:
 ## Next Steps:
   - Import the Zeppelin notebooks (Zeppelin UI → Import note → upload JSON).
   - Place rules.yaml alongside tools/rules_to_sql.py and run:
-  - python3 tools/rules_to_sql.py rules.yaml > dq_results.sql
+  - cd tools 
+  - python rules_to_sql.py rules.yaml > dq_results.sql
     — or push directly into Zeppelin with --push-to-zeppelin.
-  - Add ci/validate_flink_sql.sh into your CI pipeline before deploying Zeppelin SQL notebooks.
+  - Add ci/validate_flink_sql.sh into your CI pipeline before deploying Zeppelin 
+  rules to integrate in rules.yaml:
+  - delete_event   # FIRST
+  - missing_pk
+  - missing_cloud
+  - hash_match
+  - hash_mismatch  # LAST
+
+  SQL notebooks.
   - Wire Kafka topics and update hosts/datacenter options in the notebooks.
   - Deploy Datadog agent or consume the metrics topics to feed dashboards.
   Optional next steps:
