@@ -79,6 +79,30 @@ def generate_reason_case(rules):
     reason_lines.append("ELSE 'OK'")
     return "CASE\n  " + "\n  ".join(reason_lines) + "\nEND AS dq_reason"
 
+## Add Metric Generator
+def generate_metric_columns(rules):
+    metrics = []
+
+    for rule in rules:
+        emit = rule.get("emit", {})
+        metric = emit.get("metric")
+        condition = rule.get("when")
+
+        if not metric or not condition:
+            continue
+
+        metrics.append(f"""
+SUM(
+  CASE
+    WHEN {condition} THEN 1
+    ELSE 0
+  END
+) AS {metric}
+""".strip())
+
+    return ",\n".join(metrics)
+## End Metric Generator
+
 if __name__ == "__main__":
     rules_path = sys.argv[1]
     config = load_rules(rules_path)
