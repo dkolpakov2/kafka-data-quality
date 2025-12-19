@@ -39,11 +39,6 @@
 # 4 Kafka source → Flink SQL → Cassandra sinks
 # 5 DLQ topics
 ------------------------
-A Makefile wrapping the entire deploy:
->> 
-  make up
-  make seed-kafka
-  make run-dq
 -------------------------
 ## Usage notes
   1. Start the local stack:
@@ -341,6 +336,99 @@ Target:
 6. Zeppelin JSON-ready
 7. Cloud & On-Prem matching
 
+
+===========
+## Run unit tests (fast)
+From repo root: PowerShell (Windows):
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install --upgrade pip
+pip install -r requirements.txt
+pip install pytest pytest-cov
+pytest -v
+## Validate Rules YAML fix identetion
+python -c "import yaml; yaml.safe_load(open('data-quality/tools/rules_v2.yaml'))"
+
+pytest -v --cov=producer --cov=consumer --cov-report=xml
+# coverage.xml will be produced (CI artifact)
+
+# Run a single test:
+pytest -q tests/test_validator_schema.py::test_schema_validation_pass
+
+# 2) Linting / Static checks
+pip install ruff
+ruff check .
+
+# 3) Schema validation (Avro/JSON)
+CI step runs:
+
+pip install fastavro jsonschema
+python scripts/validate_schemas.py
+
+4) Build / Java tests (Flink project)
+If you need to build the Flink Java job (see Flink-DQ-Kafka):
+# Ensure JDK and Maven installed
+cd Flink-DQ-Kafka
+mvn test 
+# run Java unit tests for Flink module
+mvn package         # build jar
+# or use `make build-jar` if you have a Makefile in your environment (README references it)
+
+5) Integration / End-to-end tests (Docker Compose)
+Start the stack (root or data-quality folder, per README):
+
+# from repo root (uses docker-compose.yml)
+docker-compose up -d --build
+# or if following Flink/Zeppelin setup: docker-compose -f data-quality/docker-compose.yaml up -d
+
+- Seed Kafka (two options):
+Using the included seeder container:
+  docker-compose up -d kafka-seeder
+  docker logs -f kafka-seeder
+
+- Running seeder locally (use .venv or Python env):
+Verify:
+
+cd data-quality/kafka-seeder
+python -m pip install -r requirements.txt
+KAFKA_BROKER=kafka:9092 python seeder.py
+# Or set KAFKA_BROKER=localhost:9092 if testing against local host
+
+Check service logs (e.g., validator/pipeline): docker logs -f data_quality_service
+Inspect Kafka topic messages:
+
+docker exec -it kafka kafka-console-consumer --bootstrap-server kafka:9092 --topic topic_onprem_sales --from-beginning --max-messages 10
+
+- Inspect Cassandra via docker exec -it cassandra cqlsh and DESCRIBE KEYSPACES.
+6) CI-local (simulate GitLab CI steps)
+You can run the sequence locally:
+
+## Unit tests + coverage:
+pytest -v --cov=producer --cov=consumer --cov-report=xml
+## Schema validation:
+python scripts/validate_schemas.py
+===============================================================================
+
+# Validate Placeholders Are Replaced:
+grep -n "{t1}\|{t2}\|{pk}" dq_generated.sql
+  # should be empty
+grep -n "FALSE" dq_generated.sql
+  # should be empty
+
+
+
+kafka-topics.sh --bootstrap-server localhost:9092 \
+  --create --topic onprem.customer.events --partitions 1 --replication-factor 1
+
+kafka-topics.sh --bootstrap-server localhost:9092 \
+  --create --topic cloud.customer.hash --partitions 1 --replication-factor 1
+
+
+
+
+
+
+================================================
 ## Next Steps:
   - Import the Zeppelin notebooks (Zeppelin UI → Import note → upload JSON).
   - Place rules.yaml alongside tools/rules_to_sql.py and run:
@@ -465,11 +553,15 @@ Each notebook:
  05_drift_report.sql
 
 ## Steps
-1. >> run:
-    python3 tools/rules_to_sql.py rules.yaml > dq_results.sql
+1. >> run: 
+    cd tools;
+    python rules_to_sql.py rules.yaml > dq_results.sql
 — or push directly into Zeppelin with --push-to-zeppelin.
 
 2. >> Add ci/validate_flink_sql.sh into your CI pipeline before deploying Zeppelin SQL notebooks.
+
+3. Import dq_generated2.sql into Flink SQLwill  UI
+
 
 3. >>Wire Kafka topics and update hosts/datacenter options in the notebooks.
 ## Create Kafka Topics:
@@ -976,3 +1068,8 @@ AFTER INSERT OR UPDATE OR DELETE ON users
     FOR EACH ROW EXECUTE FUNCTION process_users_audit();
 ========== DONE ==================================================
 ==================================================================
+
+next:
+==================================================================
+
+JSON Schema Validation for rules.yaml

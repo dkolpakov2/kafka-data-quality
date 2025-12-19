@@ -1,0 +1,78 @@
+version: 2
+
+metadata:
+  env: prod
+  pipeline: cassandra-cross-dc-dq
+
+metrics:
+  namespace: dq.cassandra
+  window: 10 SECONDS
+
+tables:
+
+  - name: customer
+    pk: customer_id
+
+    sources:
+      onprem:
+        topic: onprem.customer.events
+        table: customer_onprem
+        dc: onprem
+        alias: t1
+
+      cloud:
+        topic: cloud.customer.hash
+        table: customer_cloud
+        dc: azure
+        alias: t2
+
+    hash:
+      onprem_field: hash_onprem
+      cloud_field: hash_cloud
+
+  - name: orders
+    pk: order_id
+
+    sources:
+      onprem:
+        topic: onprem.orders.events
+        table: orders_onprem
+        dc: onprem
+        alias: t1
+
+      cloud:
+        topic: cloud.orders.hash
+        table: orders_cloud
+        dc: azure
+        alias: t2
+
+    hash:
+      onprem_field: hash_onprem
+      cloud_field: hash_cloud
+
+rules:
+
+  - name: delete_event
+    description: Delete event – hash comparison skipped
+    when: "{t1}.action = 'DELETE'"
+    emit:
+      dq_status: DELETE_EVENT
+      metric: delete_count
+      severity: INFO
+
+  - name: missing_cloud
+    description: Missing row in cloud Cassandra
+    when: "{t1}.action != 'DELETE' AND {t2}.{pk} IS NULL"
+    emit:
+      dq_status: MISSING_CLOUD
+      metric: missing_cloud
+      severity: ERROR
+
+  - name: hash_mismatch
+    description: Hash mismatch between DCs
+    when: "{t1}.action != 'DELETE'
+           AND {t1}.{hash_onprem} != {t2}.{hash_cloud}"
+    emit:
+      dq_status: MISMATCH
+      metric: hash_mismatch
+      severity: ERROR
