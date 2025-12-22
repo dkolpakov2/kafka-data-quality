@@ -21,12 +21,31 @@ Datadog / Alerts
     curl http://localhost:8081
 
 ## 1.2 Start SQL Gateway (Recommended)
-    $FLINK_HOME/bin/sql-gateway.sh start
+    $FLINK_HOME/bin/sql-gateway.sh start -e 0.0.0.0:8083
     curl http://localhost:8083/info
 
+    1.3 Correct Ways to Use dq_generated.sql in Flink
+        $FLINK_HOME/bin/sql-client.sh gateway -e 0.0.0.0:8083 -f dq_generated2.sql
+    1.4. Option 2: Paste SQL Directly (Interactive)
+        If you’re already inside:
+        $FLINK_HOME/bin/sql-client.sh gateway
+            Copy everything from dq_generated.sql
+            Paste into the prompt
+            Press Enter
+    1.5. Option 3: Zeppelin (%flink.ssql)
+            In Zeppelin:
+            Create a new paragraph
+            with Interpreter: flink.ssql
+             Paste entire contents of dq_generated.sql
+    1.6. Check to run in Zeppelin:
+        SHOW VIEWS;
 ## 2. Create Source Tables (ONE-TIME)
     dq_generated.sql assumes Kafka tables already exist.
-    I must create them first.    
+    I must create them first. 2.1 and 2.2 following next->   
+
+>> Add Flink-SQL gateway to docker-compose.yaml
+	 docker-compose build --no-cache sql-gateway
+	 docker-compose up -d    
 # 2.1. 
 CREATE TABLE onprem_customer_events (
   customer_id STRING,
