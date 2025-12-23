@@ -128,6 +128,14 @@ services:
       - jobmanager
     command: taskmanager
     environment:
+      # JobManager host
+      jobmanager.rpc.address: flink_jobmanager          # or docker service name
+      # Flink REST endpoint
+      rest.address: flink_jobmanager
+      rest.port: 8081
+      # SQL Gateway specific
+      sql-gateway.endpoint.rest.address: 0.0.0.0
+      sql-gateway.endpoint.rest.port: 8083    
       #- JOB_MANAGER_RPC_ADDRESS=jobmanager
       FLINK_PROPERTIES: |
        jobmanager.rpc.address: jobmanager
@@ -160,6 +168,25 @@ services:
       - ./zeppelin/notebooks:/zeppelin/notebook
       - ./zeppelin/conf:/zeppelin/conf
       - /usr/lib/zeppelin/interpreter
+  ### ============================================================
+  # SQL GATEWAY (for Flink SQL)
+  # ============================================================
+  sql-gateway:
+    image: flink:1.17.1
+    container_name: sql-gateway
+    depends_on:
+      - jobmanager
+    ports:
+      - "8083:8083"
+    command: >
+      bash -c "
+      ./bin/sql-gateway.sh start
+      -Dsql-gateway.endpoint.rest.address=0.0.0.0
+      -Dsql-gateway.endpoint.rest.port=8083
+      -Dexecution.target=remote
+      -Dexecution.remote.host=jobmanager
+      -Dexecution.remote.port=8081
+      "
 
   # ============================================================
   # PYTHON DQ RULE GENERATOR (OPTIONAL)

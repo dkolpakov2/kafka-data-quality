@@ -1,0 +1,44 @@
+{
+  "name": "cassandra-cloud-hash-source",
+  "config": {
+    "connector.class": "com.datastax.oss.kafka.source.CassandraSourceConnector",
+    "tasks.max": "4",
+
+    "contact.points": "cassandra-cloud",
+    "load.balancing.local.dc": "dc1",
+    "port": "9042",
+
+    "keyspace": "cloud_keyspace",
+    "table": "business_table",
+
+    "topic.prefix": "raw-cloud-",
+
+    "poll.interval.ms": "5000",
+    "timestamp.column.name": "last_updated",
+    "mode": "timestamp",
+
+    "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "false",
+
+    "transforms": "ExtractPK,ComputeHash,RouteTopic",
+
+    "transforms.ExtractPK.type": "org.apache.kafka.connect.transforms.ValueToKey",
+    "transforms.ExtractPK.fields": "pk",
+
+    "transforms.ComputeHash.type": "com.company.kafka.connect.smt.HashRowSMT",
+    "transforms.ComputeHash.hash.fields": "col1,col2,col3",
+    "transforms.ComputeHash.hash.algorithm": "SHA-256",
+    "transforms.ComputeHash.output.field": "hash_cloud",
+
+    "transforms.RouteTopic.type": "org.apache.kafka.connect.transforms.RegexRouter",
+    "transforms.RouteTopic.regex": "raw-cloud-.*",
+    "transforms.RouteTopic.replacement": "topic2-cloud-hash",
+
+    "errors.tolerance": "all",
+    "errors.deadletterqueue.topic.name": "dlq-cassandra-cloud",
+    "errors.deadletterqueue.context.headers.enable": "true",
+    "errors.log.enable": "true",
+    "errors.log.include.messages": "true"
+  }
+}

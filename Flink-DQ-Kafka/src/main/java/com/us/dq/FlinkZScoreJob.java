@@ -4,6 +4,8 @@ package com.example.dq;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.us.dq.FlinkZScoreJob.CassandraRecord;
+
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -12,7 +14,7 @@ import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer;
 import org.apache.flink.api.common.functions.FilterFunction;
 
 import java.util.Properties;
-
+/* Complete Flink Job (Kafka → ZScore → Cassandra) */
 public class FlinkZScoreJob {
 
     public static void main(String[] args) throws Exception {

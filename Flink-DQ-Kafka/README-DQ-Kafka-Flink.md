@@ -13,6 +13,46 @@ Flink SQL Job: DQ Hash Check
    |
    +--> DataDog metrics
 
+               ┌─────────────────────┐
+               │      Producers      │
+               └─────────┬───────────┘
+                         │
+                         ▼
+                ┌──────────────────┐
+                │       Kafka      │
+                │ raw_input topic  │
+                └─────────┬────────┘
+                          │
+                          ▼
+         ┌─────────────────────────────────────────┐
+         │               Apache Flink              │
+         │-----------------------------------------│
+         │  1. Schema Validation                   │
+         │  2. Rule Engine (YAML)                  │
+         │  3. Z-score/Drift/anomaly detection     │
+         │  4. Deduplication / Late-event handling │
+         │  5. Quality tagging (dq_pass/dq_fail)   │
+         │  6. Dual Writes: On-Prem + Azure        │
+         └─────────┬───────────────────────┬───────┘
+                   │                       │
+                   ▼                       ▼
+       ┌───────────────────┐   ┌─────────────────────────┐
+       │ Cassandra On-Prem │   │ Azure Cassandra Cluster │
+       └───────────────────┘   └─────────────────────────┘
+                   │                       │
+                   └──────────┬────────────┘
+                              │
+                              ▼
+              ┌────────────────────────────────┐
+              │ Flink Batch / Scheduled Job    │
+              │  • Reconciliation              │
+              │  • Hash consistency            │
+              │  • Drift analytics             │
+              └────────────────────────────────┘
+
+## Package
+mvn clean package
+
 ### Advantages for this Architecture ###
 
  No synchronous DB calls in Flink SQL
@@ -51,8 +91,19 @@ Created by a separate pipeline:
 	  --bootstrap-server kafka:9092 \
 	  --partitions 3 \
 	  --replication-factor 1
-	
-	
+
+2.3. 	to Verify It Works
+1️⃣ Deploy connector:
+curl -X POST http://connect:8083/connectors \
+  -H "Content-Type: application/json" \
+  -d @cassandra-cloud-source.json
+2.4. Force a failure (e.g. null column)
+  Then check DLQ:	
+kafka-console-consumer.sh \
+  --bootstrap-server kafka:9092 \
+  --topic dlq-cassandra-cloud \
+  --from-beginning
+-------  
 3. ATTN: No Direct Access Flink SQL to Cassandra DB
 	Cassandra access will be outside Flink SQL 
 		Kafka Connect

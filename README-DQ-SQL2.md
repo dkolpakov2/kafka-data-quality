@@ -451,10 +451,15 @@ kafka-topics.sh --bootstrap-server localhost:9092 \
   - Convert datadog_dq_dashboard.json into an importable Datadog dashboard via API calls.
   - Add unit tests for rules_to_sql.py.
 
+
 -------------------------------------
 ## 3. Data Quality Rules in Flink SQL
 # 3.1 Canonical Record Hash (Generic for Any Table)
 # Works for any table (hash definition is shared across jobs)
+
+# ------------------------------------------
+# Use idempotent writes to support replays.
+# ------------------------------------------
 CREATE VIEW dq_enriched AS
 SELECT
   id,
@@ -754,6 +759,34 @@ kafdrop:
 >> http://localhost:8080/#/notebook/2MD56Q4ZV
 
 
+# ------------------------------------------------------------------ #
+
+## C. Periodic Reconciliation (Flink Batch Job)
+  Run every 30 minutes / hourly:
+
+Compare:
+| Check                      | Method                                | Reason                      |
+| -------------------------- | ------------------------------------- | --------------------------- |
+| **Row count**              | CQL `COUNT(*)` or Spark via Flink SQL | Quick surface mismatch      |
+| **Hash per partition key** | Murmur3 hashing                       | Detect drift                |
+| **Full row consistency**   | Flink Batch job joining both tables   | Identify partial corruption |
+| **Statistical comparison** | Mean, stddev, quantiles               | Detect data drift           |
+| **Schema changes**         | Schema registry diff                  | Detect mismatches           |
+----------------------------------------------------------------------------------------------------
+
+## Vaidate  Drift Detection
+CREATE VIEW unified_hashes AS
+SELECT record_hash, 'ONPREM' AS source_dc FROM cassandra_onprem_hashes
+UNION ALL
+SELECT record_hash, 'CLOUD' AS source_dc FROM cassandra_cloud_hashes;
+-- ##
+SELECT
+  record_hash,
+  COUNT(DISTINCT source_dc) AS dc_count
+FROM unified_hashes
+GROUP BY record_hash
+HAVING dc_count > 1;
+
 #
 # --------------------------------------------------------------------
 ## NEXT:
@@ -765,7 +798,7 @@ kafdrop:
 ====================================================================
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 ====================================================================
-## NEXT STEPS MONTORING
+## NEXT STEPS MONITORING
 ## DATA DOG Service
 ====================================================================
 
@@ -1017,6 +1050,114 @@ WHERE status <> 'MATCH';
 ---------------------------------
 
 
+=================================================================
+## Fix Error When Run Zeppelin 
+flink.ssql
+SELECT 1;
+
+ERROR:
+java.lang.IndexOutOfBoundsException: Index: 0, Size: 0
+	at java.util.ArrayList.rangeCheck(ArrayList.java:659)
+	at java.util.ArrayList.get(ArrayList.java:435)
+	at org.apache.zeppelin.interpreter.launcher.FlinkInterpreterLauncher.chooseFlinkAppJar(FlinkInterpreterLauncher.java:148)
+	at org.apache.zeppelin.interpreter.launcher.FlinkInterpreterLauncher.buildEnvFromProperties(FlinkInterpreterLauncher.java:84)
+	at org.apache.zeppelin.interpreter.launcher.StandardInterpreterLauncher.launchDirectly(StandardInterpreterLauncher.java:77)
+	at org.apache.zeppelin.interpreter.launcher.InterpreterLauncher.launch(InterpreterLauncher.java:110)
+	at org.apache.zeppelin.interpreter.InterpreterSetting.createInterpreterProcess(InterpreterSetting.java:856)
+	at org.apache.zeppelin.interpreter.ManagedInterpreterGroup.getOrCreateInterpreterProcess(ManagedInterpreterGroup.java:66)
+	at org.apache.zeppelin.interpreter.remote.RemoteInterpreter.getOrCreateInterpreterProcess(RemoteInterpreter.java:104)
+	at org.apache.zeppelin.interpreter.remote.RemoteInterpreter.internal_create(RemoteInterpreter.java:154)
+	at org.apache.zeppelin.interpreter.remote.RemoteInterpreter.open(RemoteInterpreter.java:126)
+	at org.apache.zeppelin.interpreter.remote.RemoteInterpreter.getFormType(RemoteInterpreter.java:271)
+	at org.apache.zeppelin.notebook.Paragraph.jobRun(Paragraph.java:438)
+	at org.apache.zeppelin.notebook.Paragraph.jobRun(Paragraph.java:69)
+	at org.apache.zeppelin.scheduler.Job.run(Job.java:172)
+	at org.apache.zeppelin.scheduler.AbstractScheduler.runJob(AbstractScheduler.java:132)
+	at org.apache.zeppelin.scheduler.RemoteScheduler$JobRunner.run(RemoteScheduler.java:182)
+	at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:511)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:266)
+	at java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.access$201(ScheduledThreadPoolExecutor.java:180)
+	at java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:293)
+	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1149)
+	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624)
+	at java.lang.Thread.run(Thread.java:748)
+-----------------------
+1.   Index: 0, Size: 0 
+means:
+   - Zeppelin tried to pick the first JAR from FLINK_HOME/lib or the configured flink.app.jar list,
+   - But there are no JARs available, so the ArrayList is empty → crash.
+Common causes:
+   - You mounted Flink into Zeppelin, but $FLINK_HOME/lib is empty in the Zeppelin container.
+   - You never set the flink.app.jar property in Zeppelin interpreter settings.
+   - You are running Zeppelin and Flink in separate containers, and Zeppelin has no access to Flink binaries.
+
+## Option 1: Use Flink SQL Gateway Instead
+  - Recommended for modern setups.
+    Zeppelin connects to remote Flink SQL Gateway, no JAR needed.
+Steps:
+  - Start a Flink cluster.
+  - Start Flink SQL Gateway in Flink_jobmanager cluster:
+      $FLINK_HOME/bin/sql-gateway.sh start-foreground
+      Check: 
+        curl http://localhost:8081
+  - Configure Zeppelin %flink.ssql interpreter:
+      1. Execution mode: Remote
+      2. Remote host: sql-gateway host (or container name)
+      3. Remote port: 8083    
+
+## Option 2: Provide a Flink Distribution in Zeppelin
+  If you want local execution:
+  1. Make sure Zeppelin container has full Flink distribution:
+    $FLINK_HOME/bin
+    $FLINK_HOME/lib/flink-dist-*.jar
+  2. In Zeppelin interpreter settings:
+    flink.home → /opt/flink (inside Zeppelin)
+    flink.app.jar → leave empty (Flink 1.17+ should auto-detect lib/)
+  3. Restart interpreter.
+
+## Option 3: Use %flink.pyflink or %flink.ipyflink
+  1. These don’t require JAR selection.
+  2. Good for Python-based DQ pipelines.
+  3. You can run:
+    %flink.pyflink
+    t_env.execute_sql("SELECT 1").print()  
+
+## Step 2: Configure SQL Gateway
+ # Edit flink-conf.yaml (or pass as environment variables) with the minimum required settings:
+ >> yaml:
+  # JobManager host
+  jobmanager.rpc.address: localhost          # or docker service name
+  # Flink REST endpoint
+  rest.address: localhost
+  rest.port: 8081
+  # SQL Gateway specific
+  sql-gateway.endpoint.rest.address: 0.0.0.0
+  sql-gateway.endpoint.rest.port: 8083
+
+## Step 3: Start SQL Gateway in Foreground (Debug-Friendly)
+  $FLINK_HOME/bin/sql-gateway.sh start-foreground
+
+## Step 4: Verify SQL Gateway
+  curl http://localhost:8083/info
+
+## Step 5: Connect Zeppelin %flink.ssql to SQL Gateway
+  # 1.  Open Zeppelin interpreter settings → %flink.ssql.
+    2. Set:  
+  Execution Mode	Remote
+  Remote Host	<SQL Gateway host>
+  Remote Port	8083
+  Flink Home (optional)	leave empty (ignored in remote mode)   
+
+# 3.  Restart Interpreter
+    %flink.ssql
+    SELECT 1;
+
+## Step 6: Next Steps
+  - Once SQL Gateway works, you can:
+  - Run dq_generated.sql via Zeppelin %flink.ssql.
+  - Read/write Kafka topics.
+  - Compute dq_results_* and dq_metrics_*.
+  - Optionally send DLQ records to separate Kafka topic.
 
 
 
