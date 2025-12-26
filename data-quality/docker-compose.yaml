@@ -143,31 +143,6 @@ services:
     deploy:
       replicas: 2
 
-  # ============================================================
-  # ZEPPELIN (Flink SQL Notebooks)
-  # ============================================================
-  zeppelin:
-    image: apache/zeppelin:0.10.1
-    build:
-       context: .
-       dockerfile: zeppelin/Dockerfile-zeppelin-flink
-    depends_on:
-      - jobmanager
-    #  - taskmanager
-    ports:
-      - "8080:8080"
-    environment:
-      ZEPPELIN_JAVA_OPTS: >
-        -Dzeppelin.flink.useLocalFlink=true
-        -Dzeppelin.flink.ui.enabled=true
-        -Dzeppelin.flink.run.as.session=true
-        -DFLINK_HOME=/opt/flink
-        -Dzeppelin.flink.runMode=local
-    volumes:
-      - ./flink-1.17.1:/opt/flink
-      - ./zeppelin/notebooks:/zeppelin/notebook
-      - ./zeppelin/conf:/zeppelin/conf
-      - /usr/lib/zeppelin/interpreter
   ### ============================================================
   # SQL GATEWAY (for Flink SQL)
   # ============================================================
@@ -178,16 +153,52 @@ services:
       - jobmanager
     ports:
       - "8083:8083"
-    command: >
-      bash -c "
-      ./bin/sql-gateway.sh start
-      -Dsql-gateway.endpoint.rest.address=0.0.0.0
-      -Dsql-gateway.endpoint.rest.port=8083
-      -Dexecution.target=remote
-      -Dexecution.remote.host=jobmanager
-      -Dexecution.remote.port=8081
-      "
-
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        rest.address: flink-jobmanager
+        sql-gateway.endpoint.rest.address: 0.0.0.0
+        sql-gateway.endpoint.rest.port: 8083
+    command: /opt/flink/bin/sql-gateway.sh start-foreground      
+    # command: >
+    #   bash -c "
+    #   ./bin/sql-gateway.sh start
+    #   -Dsql-gateway.endpoint.rest.address=0.0.0.0
+    #   -Dsql-gateway.endpoint.rest.port=8083
+    #   -Dexecution.target=remote
+    #   -Dexecution.remote.host=jobmanager
+    #   -Dexecution.remote.port=8081
+    #   "
+  # ============================================================
+  # ZEPPELIN (Flink SQL Notebooks)
+  # ============================================================
+  zeppelin:
+    image: apache/zeppelin:0.11.1
+    build:
+       context: .
+       dockerfile: zeppelin/Dockerfile-zeppelin-flink
+    depends_on:
+      - sql-gateway
+    #  - jobmanager
+    #  - taskmanager
+    ports:
+      - "8080:8080"
+    environment:
+      ZEPPELIN_JAVA_OPTS: >
+        -Dzeppelin.flink.useLocalFlink=true
+        -Dzeppelin.flink.ui.enabled=true
+        -Dzeppelin.flink.run.as.session=true
+        -DFLINK_HOME=/opt/flink
+        -Dzeppelin.flink.runMode=remote
+        -Dzeppelin.flink.remote.host=jobmanager
+      ZEPPELIN_NOTEBOOK_DIR: /zeppelin/notebook
+    volumes:
+      - ./flink-1.17.1:/opt/flink
+      - ./zeppelin/notebooks:/zeppelin/notebook
+      - ./zeppelin/conf:/zeppelin/conf
+      - /usr/lib/zeppelin/interpreter
+    # Interpreter configuration can be updated via Zeppelin UI:
+    # %flink.ssql -> Execution Mode: Remote, Remote Host: sql-gateway, Remote Port: 8083      
   # ============================================================
   # PYTHON DQ RULE GENERATOR (OPTIONAL)
   # ============================================================
