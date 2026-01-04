@@ -174,9 +174,11 @@ services:
   # ============================================================
   zeppelin:
     image: apache/zeppelin:0.11.1
-    build:
-       context: .
-       dockerfile: zeppelin/Dockerfile-zeppelin-flink
+    container_name: zeppelin
+    # Option2 REMOVED: flink jar inside of zeppelin image , switch to option 1
+    # build:
+    #    context: .
+    #    dockerfile: zeppelin/Dockerfile-zeppelin-flink
     depends_on:
       - sql-gateway
     #  - jobmanager
@@ -184,16 +186,18 @@ services:
     ports:
       - "8080:8080"
     environment:
-      ZEPPELIN_JAVA_OPTS: >
-        -Dzeppelin.flink.useLocalFlink=true
-        -Dzeppelin.flink.ui.enabled=true
-        -Dzeppelin.flink.run.as.session=true
-        -DFLINK_HOME=/opt/flink
-        -Dzeppelin.flink.runMode=remote
-        -Dzeppelin.flink.remote.host=jobmanager
+      # ZEPPELIN_JAVA_OPTS: >
+      #   -Dzeppelin.flink.useLocalFlink=true
+      #   -Dzeppelin.flink.ui.enabled=true
+      #   -Dzeppelin.flink.run.as.session=true
+      #   -DFLINK_HOME=/opt/flink
+      #   -Dzeppelin.flink.runMode=remote
+      #   -Dzeppelin.flink.remote.host=jobmanager
       ZEPPELIN_NOTEBOOK_DIR: /zeppelin/notebook
+      # Interpreter configuration can be updated via Zeppelin UI:
+      # %flink.ssql -> Execution Mode: Remote, Remote Host: sql-gateway, Remote Port: 8083      
     volumes:
-      - ./flink-1.17.1:/opt/flink
+      #- ./flink-1.17.1:/opt/flink
       - ./zeppelin/notebooks:/zeppelin/notebook
       - ./zeppelin/conf:/zeppelin/conf
       - /usr/lib/zeppelin/interpreter

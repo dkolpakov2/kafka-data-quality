@@ -147,10 +147,46 @@
    # Restart Docker:
 		docker-compose ps   ## will show all running containers
 		docker-compose down
-		docker-compose build zeppelin
+		docker-compose build --no-cache zeppelin
 
-        docker-compose up -d    ## --build
-		docker-compose restart zeppelin
+    docker-compose up -d    ## --build
+		docker-compose restart zeppelin --no-cache
+
+    docker-compose up -d --build
+    
+     docker build --no-cache -t zeppelin:latest .
+     docker-compose build --no-cache zeppelin
+     docker-compose up -d zeppelin
+
+    ## Clear build cache only
+      docker builder prune -f
+    ## Clean unused images (still safe)
+      docker image prune -f
+    ## Clean stopped containers + unused networks
+      docker container prune -f
+      docker network prune -f
+    ## Remove containers + images + volumes for THIS project
+      docker-compose down --rmi local --volumes --remove-orphans
+    ## Verify cleaned:
+      docker ps -a
+      docker images
+      docker volume ls  
+    ## Show all env-s bash:
+      env
+      
+     docker exec -it --user root zeppelin bash
+
+    WARN:  time="2025-12-26T15:45:40-05:00" level=warning msg="The \"DD_API_KEY\" variable is not set. Defaulting to a blank string."
+    
+    # Fix:
+    bash:
+      export DD_API_KEY=dummy_key_for_local_test
+      ## ex:
+        DD_API_KEY=00000000000000000000000000000000
+        DD_SITE=datadoghq.com
+      docker-compose up
+      ## Validate:
+      docker exec -it datadog-agent env | grep DD_API_KEY
 
     make build-jar (requires Maven and the Java project present).
   3. Submit jobs:
@@ -549,6 +585,12 @@ Each notebook:
   
 ##  Inside Zeppelin container:
 	docker exec -it zeppelin ls /opt/zeppelin/interpreter/flink
+
+## Fix  FLINK_HOME is not specified    
+Step 1: Create a dummy directory in Zeppelin container
+  docker exec -it zeppelin mkdir -p /opt/flink
+Step 2: Set this in Zeppelin interpreter
+  FLINK_HOME = /opt/flink
 
 ---------------------    
  01_sources.sql
@@ -1104,6 +1146,11 @@ Steps:
       1. Execution mode: Remote
       2. Remote host: sql-gateway host (or container name)
       3. Remote port: 8083    
+      4. docker exec -it --user root zeppelin bash
+      5.  create empty flink folder:  mkdir /opt/flink
+      6. add to Zeppelink Interpreter UI FLINK_HOME: /opt/flink
+      7. create: mkdir -p /opt/flink/lib
+          touch /opt/flink/lib/dummy.jar
 
 ## Option 2: Provide a Flink Distribution in Zeppelin
   If you want local execution:
@@ -1144,7 +1191,7 @@ Steps:
   # 1.  Open Zeppelin interpreter settings → %flink.ssql.
     2. Set:  
   Execution Mode	Remote
-  Remote Host	<SQL Gateway host>
+  Remote Host	<SQL Gateway host> sql-gateway
   Remote Port	8083
   Flink Home (optional)	leave empty (ignored in remote mode)   
 

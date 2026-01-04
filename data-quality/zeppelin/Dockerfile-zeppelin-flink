@@ -11,11 +11,15 @@ RUN apt-get update && apt-get install -y curl
 ## Add Shell interpreter
 #RUN sed -i 's/^# zeppelin.interpreter.shell/zeppelin.interpreter.shell/' \
 #    /opt/zeppelin/conf/zeppelin-site.xml
-	
+
+# Create Flink directory
+RUN mkdir -p /opt/flink
+
 # Install Flink inside Zeppelin
 RUN curl -L https://archive.apache.org/dist/flink/flink-1.17.1/flink-1.17.1-bin-scala_2.12.tgz \
-    | tar -xz -C /opt
+    | tar -xz -C /opt/flink
 
+#RUN cp /opt/flink-1.17.1/lib/flink-dist*.jar /opt/flink/lib/    
 #ENV FLINK_HOME=/opt/flink-1.17.1
 
 ENV FLINK_HOME=/opt/flink
