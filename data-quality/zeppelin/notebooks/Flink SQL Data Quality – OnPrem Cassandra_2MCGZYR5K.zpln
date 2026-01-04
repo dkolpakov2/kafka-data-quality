@@ -1,0 +1,189 @@
+{
+  "paragraphs": [
+    {
+      "text": "%flink.ssql\nSELECT 1;",
+      "user": "anonymous",
+      "dateUpdated": "2025-12-23 21:19:53.513",
+      "progress": 0,
+      "config": {
+        "editorSetting": {
+          "language": "sql",
+          "editOnDblClick": false,
+          "completionKey": "TAB",
+          "completionSupport": true
+        },
+        "colWidth": 12.0,
+        "editorMode": "ace/mode/sql",
+        "fontSize": 9.0,
+        "results": {},
+        "enabled": true
+      },
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "results": {
+        "code": "ERROR",
+        "msg": [
+          {
+            "type": "TEXT",
+            "data": "java.lang.NullPointerException\n\tat java.util.Arrays.stream(Arrays.java:5004)\n\tat org.apache.zeppelin.interpreter.launcher.FlinkInterpreterLauncher.chooseFlinkAppJar(FlinkInterpreterLauncher.java:139)\n\tat org.apache.zeppelin.interpreter.launcher.FlinkInterpreterLauncher.buildEnvFromProperties(FlinkInterpreterLauncher.java:84)\n\tat org.apache.zeppelin.interpreter.launcher.StandardInterpreterLauncher.launchDirectly(StandardInterpreterLauncher.java:77)\n\tat org.apache.zeppelin.interpreter.launcher.InterpreterLauncher.launch(InterpreterLauncher.java:110)\n\tat org.apache.zeppelin.interpreter.InterpreterSetting.createInterpreterProcess(InterpreterSetting.java:856)\n\tat org.apache.zeppelin.interpreter.ManagedInterpreterGroup.getOrCreateInterpreterProcess(ManagedInterpreterGroup.java:66)\n\tat org.apache.zeppelin.interpreter.remote.RemoteInterpreter.getOrCreateInterpreterProcess(RemoteInterpreter.java:104)\n\tat org.apache.zeppelin.interpreter.remote.RemoteInterpreter.internal_create(RemoteInterpreter.java:154)\n\tat org.apache.zeppelin.interpreter.remote.RemoteInterpreter.open(RemoteInterpreter.java:126)\n\tat org.apache.zeppelin.interpreter.remote.RemoteInterpreter.getFormType(RemoteInterpreter.java:271)\n\tat org.apache.zeppelin.notebook.Paragraph.jobRun(Paragraph.java:438)\n\tat org.apache.zeppelin.notebook.Paragraph.jobRun(Paragraph.java:69)\n\tat org.apache.zeppelin.scheduler.Job.run(Job.java:172)\n\tat org.apache.zeppelin.scheduler.AbstractScheduler.runJob(AbstractScheduler.java:132)\n\tat org.apache.zeppelin.scheduler.RemoteScheduler$JobRunner.run(RemoteScheduler.java:182)\n\tat java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:511)\n\tat java.util.concurrent.FutureTask.run(FutureTask.java:266)\n\tat java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.access$201(ScheduledThreadPoolExecutor.java:180)\n\tat java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:293)\n\tat java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1149)\n\tat java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624)\n\tat java.lang.Thread.run(Thread.java:748)\n"
+          }
+        ]
+      },
+      "apps": [],
+      "runtimeInfos": {},
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_1766524783292_1047325519",
+      "id": "paragraph_1766524783292_1047325519",
+      "dateCreated": "2025-12-23 21:19:43.292",
+      "dateStarted": "2025-12-23 21:19:53.547",
+      "dateFinished": "2025-12-23 21:19:53.582",
+      "status": "ERROR"
+    },
+    {
+      "title": "01 Kafka Source",
+      "text": "%flink.ssql\nCREATE TABLE kafka_onprem_source (\n  id STRING,\n  event_ts TIMESTAMP(3),\n  value DOUBLE,\n  raw_json STRING,\n  WATERMARK FOR event_ts AS event_ts - INTERVAL \u00275\u0027 SECOND\n) WITH (\n  \u0027connector\u0027 \u003d \u0027kafka\u0027,\n  \u0027topic\u0027 \u003d \u0027topic_onprem_sales\u0027,\n  \u0027properties.bootstrap.servers\u0027 \u003d \u0027kafka:9092\u0027,\n  \u0027format\u0027 \u003d \u0027json\u0027\n);",
+      "user": "anonymous",
+      "dateUpdated": "2025-12-23 21:19:24.254",
+      "progress": 0,
+      "config": {},
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "apps": [],
+      "runtimeInfos": {},
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_1766524764254_627446502",
+      "id": "paragraph_1766524764237_44021186",
+      "dateCreated": "2025-12-23 21:19:24.254",
+      "status": "READY"
+    },
+    {
+      "title": "02 DQ Enrichment + Hash",
+      "text": "%flink.ssql\nCREATE VIEW dq_enriched AS\nSELECT\n  id,\n  event_ts,\n  value,\n  SHA256(\n    CONCAT_WS(\u0027|\u0027,\n      COALESCE(id, \u0027NULL\u0027),\n      COALESCE(CAST(value AS STRING), \u0027NULL\u0027),\n      CAST(event_ts AS STRING)\n    )\n  ) AS record_hash,\n  raw_json\nFROM kafka_onprem_source;",
+      "user": "anonymous",
+      "dateUpdated": "2025-12-23 21:19:24.255",
+      "progress": 0,
+      "config": {},
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "apps": [],
+      "runtimeInfos": {},
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_1766524764254_1592426177",
+      "id": "paragraph_1766524764237_1447099543",
+      "dateCreated": "2025-12-23 21:19:24.255",
+      "status": "READY"
+    },
+    {
+      "title": "03 Rule Evaluation",
+      "text": "%flink.ssql\nCREATE VIEW dq_rules AS\nSELECT *,\n  CASE\n    WHEN id IS NULL THEN \u0027FAIL_ID_NULL\u0027\n    WHEN value \u003c 0 THEN \u0027FAIL_NEG_VALUE\u0027\n    WHEN event_ts IS NULL THEN \u0027FAIL_TS_NULL\u0027\n    ELSE \u0027PASS\u0027\n  END AS dq_status\nFROM dq_enriched;",
+      "user": "anonymous",
+      "dateUpdated": "2025-12-23 21:19:24.255",
+      "progress": 0,
+      "config": {},
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "apps": [],
+      "runtimeInfos": {},
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_1766524764255_557604483",
+      "id": "paragraph_1766524764237_650450171",
+      "dateCreated": "2025-12-23 21:19:24.255",
+      "status": "READY"
+    },
+    {
+      "title": "04 Cassandra Sink (OnPrem)",
+      "text": "%flink.ssql\nCREATE TABLE cassandra_onprem_sink (\n  id STRING,\n  event_ts TIMESTAMP(3),\n  value DOUBLE,\n  record_hash STRING,\n  PRIMARY KEY (id) NOT ENFORCED\n) WITH (\n  \u0027connector\u0027 \u003d \u0027cassandra\u0027,\n  \u0027keyspace\u0027 \u003d \u0027sales\u0027,\n  \u0027table\u0027 \u003d \u0027events\u0027,\n  \u0027hosts\u0027 \u003d \u002710.10.0.5,10.10.0.6\u0027,\n  \u0027datacenter\u0027 \u003d \u0027DC_ONPREM\u0027\n);",
+      "user": "anonymous",
+      "dateUpdated": "2025-12-23 21:19:24.255",
+      "progress": 0,
+      "config": {},
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "apps": [],
+      "runtimeInfos": {},
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_1766524764255_301230197",
+      "id": "paragraph_1766524764237_1049387610",
+      "dateCreated": "2025-12-23 21:19:24.255",
+      "status": "READY"
+    },
+    {
+      "title": "05 Insert Valid Rows",
+      "text": "%flink.ssql\nINSERT INTO cassandra_onprem_sink\nSELECT id, event_ts, value, record_hash\nFROM dq_rules\nWHERE dq_status \u003d \u0027PASS\u0027;",
+      "user": "anonymous",
+      "dateUpdated": "2025-12-23 21:19:24.255",
+      "progress": 0,
+      "config": {},
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "apps": [],
+      "runtimeInfos": {},
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_1766524764255_1915398582",
+      "id": "paragraph_1766524764237_1590909338",
+      "dateCreated": "2025-12-23 21:19:24.255",
+      "status": "READY"
+    },
+    {
+      "title": "06 Valid Row Counter",
+      "text": "%flink.ssql\nCREATE TABLE dq_valid_metrics (\n  job_name STRING,\n  metric_ts TIMESTAMP(3),\n  valid_count BIGINT\n) WITH (\n  \u0027connector\u0027 \u003d \u0027kafka\u0027,\n  \u0027topic\u0027 \u003d \u0027dq_metrics_valid\u0027,\n  \u0027properties.bootstrap.servers\u0027 \u003d \u0027kafka:9092\u0027,\n  \u0027format\u0027 \u003d \u0027json\u0027\n);\n\nINSERT INTO dq_valid_metrics\nSELECT\n  \u0027flink_onprem_job\u0027 AS job_name,\n  TUMBLE_END(event_ts, INTERVAL \u00271\u0027 MINUTE) AS metric_ts,\n  COUNT(*) AS valid_count\nFROM dq_rules\nWHERE dq_status \u003d \u0027PASS\u0027\nGROUP BY TUMBLE(event_ts, INTERVAL \u00271\u0027 MINUTE);",
+      "user": "anonymous",
+      "dateUpdated": "2025-12-23 21:19:24.255",
+      "progress": 0,
+      "config": {},
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "apps": [],
+      "runtimeInfos": {},
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_1766524764255_1250114692",
+      "id": "paragraph_1766524764237_722738215",
+      "dateCreated": "2025-12-23 21:19:24.255",
+      "status": "READY"
+    },
+    {
+      "title": "07 Invalid Row Counter",
+      "text": "%flink.ssql\nCREATE TABLE dq_invalid_metrics (\n  job_name STRING,\n  metric_ts TIMESTAMP(3),\n  invalid_count BIGINT\n) WITH (\n  \u0027connector\u0027 \u003d \u0027kafka\u0027,\n  \u0027topic\u0027 \u003d \u0027dq_metrics_invalid\u0027,\n  \u0027properties.bootstrap.servers\u0027 \u003d \u0027kafka:9092\u0027,\n  \u0027format\u0027 \u003d \u0027json\u0027\n);\n\nINSERT INTO dq_invalid_metrics\nSELECT\n  \u0027flink_onprem_job\u0027 AS job_name,\n  TUMBLE_END(event_ts, INTERVAL \u00271\u0027 MINUTE) AS metric_ts,\n  COUNT(*) AS invalid_count\nFROM dq_rules\nWHERE dq_status \u003c\u003e \u0027PASS\u0027\nGROUP BY TUMBLE(event_ts, INTERVAL \u00271\u0027 MINUTE);",
+      "user": "anonymous",
+      "dateUpdated": "2025-12-23 21:19:24.255",
+      "progress": 0,
+      "config": {},
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "apps": [],
+      "runtimeInfos": {},
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_1766524764255_1841382189",
+      "id": "paragraph_1766524764237_1778015479",
+      "dateCreated": "2025-12-23 21:19:24.255",
+      "status": "READY"
+    }
+  ],
+  "name": "Flink SQL Data Quality – OnPrem Cassandra",
+  "id": "2MCGZYR5K",
+  "defaultInterpreterGroup": "spark",
+  "version": "0.10.1",
+  "noteParams": {},
+  "noteForms": {},
+  "angularObjects": {},
+  "config": {
+    "isZeppelinNotebookCronEnable": false
+  },
+  "info": {}
+}

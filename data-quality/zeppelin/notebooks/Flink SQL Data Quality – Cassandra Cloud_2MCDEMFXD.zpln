@@ -1,0 +1,167 @@
+{
+  "paragraphs": [
+    {
+      "title": "01 Kafka Source (Cloud)",
+      "text": "%flink.ssql\nCREATE TABLE kafka_cloud_source (\n  id STRING,\n  event_ts TIMESTAMP(3),\n  value DOUBLE,\n  raw_json STRING,\n  WATERMARK FOR event_ts AS event_ts - INTERVAL \u00275\u0027 SECOND\n) WITH (\n  \u0027connector\u0027 \u003d \u0027kafka\u0027,\n  \u0027topic\u0027 \u003d \u0027topic_cloud_sales\u0027,\n  \u0027properties.bootstrap.servers\u0027 \u003d \u0027kafka:9092\u0027,\n  \u0027format\u0027 \u003d \u0027json\u0027\n);",
+      "user": "anonymous",
+      "dateUpdated": "2025-12-23 21:19:15.407",
+      "progress": 0,
+      "config": {},
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "apps": [],
+      "runtimeInfos": {},
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_1766524755407_40060411",
+      "id": "paragraph_1766524755383_1195894921",
+      "dateCreated": "2025-12-23 21:19:15.407",
+      "status": "READY"
+    },
+    {
+      "title": "02 DQ Enrichment + Canonical Hash",
+      "text": "%flink.ssql\nCREATE VIEW dq_enriched AS\nSELECT\n  id,\n  event_ts,\n  value,\n  SHA256(\n    CONCAT_WS(\u0027|\u0027,\n      COALESCE(id, \u0027NULL\u0027),\n      COALESCE(CAST(value AS STRING), \u0027NULL\u0027),\n      CAST(event_ts AS STRING)\n    )\n  ) AS record_hash,\n  raw_json\nFROM kafka_cloud_source;",
+      "user": "anonymous",
+      "dateUpdated": "2025-12-23 21:19:15.408",
+      "progress": 0,
+      "config": {},
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "apps": [],
+      "runtimeInfos": {},
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_1766524755408_949062967",
+      "id": "paragraph_1766524755384_798490067",
+      "dateCreated": "2025-12-23 21:19:15.408",
+      "status": "READY"
+    },
+    {
+      "title": "03 Data Quality Rules",
+      "text": "%flink.ssql\nCREATE VIEW dq_rules AS\nSELECT *,\n  CASE\n    WHEN id IS NULL THEN \u0027FAIL_ID_NULL\u0027\n    WHEN value \u003c 0 THEN \u0027FAIL_NEG_VALUE\u0027\n    WHEN event_ts IS NULL THEN \u0027FAIL_TS_NULL\u0027\n    ELSE \u0027PASS\u0027\n  END AS dq_status\nFROM dq_enriched;",
+      "user": "anonymous",
+      "dateUpdated": "2025-12-23 21:19:15.408",
+      "progress": 0,
+      "config": {},
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "apps": [],
+      "runtimeInfos": {},
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_1766524755408_2139437223",
+      "id": "paragraph_1766524755384_669446308",
+      "dateCreated": "2025-12-23 21:19:15.408",
+      "status": "READY"
+    },
+    {
+      "title": "04 Cassandra Sink (Azure Cloud)",
+      "text": "%flink.ssql\nCREATE TABLE cassandra_cloud_sink (\n  id STRING,\n  event_ts TIMESTAMP(3),\n  value DOUBLE,\n  record_hash STRING,\n  PRIMARY KEY (id) NOT ENFORCED\n) WITH (\n  \u0027connector\u0027 \u003d \u0027cassandra\u0027,\n  \u0027keyspace\u0027 \u003d \u0027sales\u0027,\n  \u0027table\u0027 \u003d \u0027events\u0027,\n  \u0027hosts\u0027 \u003d \u0027cassandra-cloud.internal\u0027,\n  \u0027datacenter\u0027 \u003d \u0027DC_AZURE\u0027\n);",
+      "user": "anonymous",
+      "dateUpdated": "2025-12-23 21:19:15.408",
+      "progress": 0,
+      "config": {},
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "apps": [],
+      "runtimeInfos": {},
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_1766524755408_1531219117",
+      "id": "paragraph_1766524755384_1752103117",
+      "dateCreated": "2025-12-23 21:19:15.408",
+      "status": "READY"
+    },
+    {
+      "title": "05 Insert Valid Records",
+      "text": "%flink.ssql\nINSERT INTO cassandra_cloud_sink\nSELECT id, event_ts, value, record_hash\nFROM dq_rules\nWHERE dq_status \u003d \u0027PASS\u0027;",
+      "user": "anonymous",
+      "dateUpdated": "2025-12-23 21:19:15.408",
+      "progress": 0,
+      "config": {},
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "apps": [],
+      "runtimeInfos": {},
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_1766524755408_33522991",
+      "id": "paragraph_1766524755384_1094088001",
+      "dateCreated": "2025-12-23 21:19:15.408",
+      "status": "READY"
+    },
+    {
+      "title": "06 DLQ – Invalid Records",
+      "text": "%flink.ssql\nCREATE TABLE dq_dlq_cloud (\n  id STRING,\n  event_ts TIMESTAMP(3),\n  value DOUBLE,\n  record_hash STRING,\n  dq_status STRING,\n  raw_json STRING\n) WITH (\n  \u0027connector\u0027 \u003d \u0027kafka\u0027,\n  \u0027topic\u0027 \u003d \u0027dq_dlq_cloud\u0027,\n  \u0027properties.bootstrap.servers\u0027 \u003d \u0027kafka:9092\u0027,\n  \u0027format\u0027 \u003d \u0027json\u0027\n);\n\nINSERT INTO dq_dlq_cloud\nSELECT id, event_ts, value, record_hash, dq_status, raw_json\nFROM dq_rules\nWHERE dq_status \u003c\u003e \u0027PASS\u0027;",
+      "user": "anonymous",
+      "dateUpdated": "2025-12-23 21:19:15.408",
+      "progress": 0,
+      "config": {},
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "apps": [],
+      "runtimeInfos": {},
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_1766524755408_1531287912",
+      "id": "paragraph_1766524755384_1506508384",
+      "dateCreated": "2025-12-23 21:19:15.408",
+      "status": "READY"
+    },
+    {
+      "title": "07 Valid Row Counter",
+      "text": "%flink.ssql\nCREATE TABLE dq_valid_metrics (\n  job_name STRING,\n  metric_ts TIMESTAMP(3),\n  valid_count BIGINT\n) WITH (\n  \u0027connector\u0027 \u003d \u0027kafka\u0027,\n  \u0027topic\u0027 \u003d \u0027dq_metrics_valid\u0027,\n  \u0027properties.bootstrap.servers\u0027 \u003d \u0027kafka:9092\u0027,\n  \u0027format\u0027 \u003d \u0027json\u0027\n);\n\nINSERT INTO dq_valid_metrics\nSELECT\n  \u0027flink_cloud_job\u0027 AS job_name,\n  TUMBLE_END(event_ts, INTERVAL \u00271\u0027 MINUTE) AS metric_ts,\n  COUNT(*) AS valid_count\nFROM dq_rules\nWHERE dq_status \u003d \u0027PASS\u0027\nGROUP BY TUMBLE(event_ts, INTERVAL \u00271\u0027 MINUTE);",
+      "user": "anonymous",
+      "dateUpdated": "2025-12-23 21:19:15.408",
+      "progress": 0,
+      "config": {},
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "apps": [],
+      "runtimeInfos": {},
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_1766524755408_1733978683",
+      "id": "paragraph_1766524755384_691459448",
+      "dateCreated": "2025-12-23 21:19:15.408",
+      "status": "READY"
+    },
+    {
+      "title": "08 Invalid Row Counter",
+      "text": "%flink.ssql\nCREATE TABLE dq_invalid_metrics (\n  job_name STRING,\n  metric_ts TIMESTAMP(3),\n  invalid_count BIGINT\n) WITH (\n  \u0027connector\u0027 \u003d \u0027kafka\u0027,\n  \u0027topic\u0027 \u003d \u0027dq_metrics_invalid\u0027,\n  \u0027properties.bootstrap.servers\u0027 \u003d \u0027kafka:9092\u0027,\n  \u0027format\u0027 \u003d \u0027json\u0027\n);\n\nINSERT INTO dq_invalid_metrics\nSELECT\n  \u0027flink_cloud_job\u0027 AS job_name,\n  TUMBLE_END(event_ts, INTERVAL \u00271\u0027 MINUTE) AS metric_ts,\n  COUNT(*) AS invalid_count\nFROM dq_rules\nWHERE dq_status \u003c\u003e \u0027PASS\u0027\nGROUP BY TUMBLE(event_ts, INTERVAL \u00271\u0027 MINUTE);",
+      "user": "anonymous",
+      "dateUpdated": "2025-12-23 21:19:15.408",
+      "progress": 0,
+      "config": {},
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "apps": [],
+      "runtimeInfos": {},
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_1766524755408_159315676",
+      "id": "paragraph_1766524755384_1520121520",
+      "dateCreated": "2025-12-23 21:19:15.408",
+      "status": "READY"
+    }
+  ],
+  "name": "Flink SQL Data Quality – Cassandra Cloud",
+  "id": "2MCDEMFXD",
+  "defaultInterpreterGroup": "spark",
+  "version": "0.10.1",
+  "noteParams": {},
+  "noteForms": {},
+  "angularObjects": {},
+  "config": {
+    "isZeppelinNotebookCronEnable": false
+  },
+  "info": {}
+}
