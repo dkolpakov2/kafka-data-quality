@@ -1,4 +1,3 @@
-#version: "3.9"
 
 services:
   # ============================================================
@@ -71,6 +70,9 @@ services:
     environment:
       KAFKA_BROKER: "kafka:9092"
       KAFKA_TOPIC: "topic_onprem_sales"
+      KAFKA_TOPIC2: "topic_cloud_sales"
+      KAFKA_TOPIC3: "topic1"
+      KAFKA_TOPIC4: "topic2"
       MESSAGE_RATE: "1"         # messages per second
       MESSAGE_LIMIT: "100"      # total messages to send
     volumes:
@@ -111,37 +113,52 @@ services:
   # FLINK
   # ============================================================
   jobmanager:
-    image: flink:1.17-scala_2.12
-    container_name: flink_jobmanager
+    image: flink:1.17.1 # flink:1.17-scala_2.12
+    container_name: jobmanager
     depends_on:
       - kafka    
     ports:
       - "8081:8081"
     command: jobmanager
     environment:
-      - JOB_MANAGER_RPC_ADDRESS=jobmanager
+      #- JOB_MANAGER_RPC_ADDRESS=jobmanager
+      # JobManager host
+      jobmanager.rpc.address: jobmanager          # or docker service name
+      # Flink REST endpoint
+      rest.address: jobmanager
+      rest.port: 8081
+      # SQL Gateway specific
+      sql-gateway.enabled: true
+      sql-gateway.endpoint.rest.address: 0.0.0.0
+      sql-gateway.endpoint.rest.port: 8083    
+      #- JOB_MANAGER_RPC_ADDRESS=jobmanager
+      #FLINK_PROPERTIES: |
+      jobmanager.memory.process.size: 1024m
+      taskmanager.memory.process.size: 1024m #2048m
+      taskmanager.numberOfTaskSlots: 2
 
   taskmanager:
-    image: flink:1.17-scala_2.12
-    #container_name: flink_taskmanager
+    image: flink:1.17.1 #flink:1.17-scala_2.12
+    #container_name: taskmanager
     depends_on:
       - jobmanager
     command: taskmanager
     environment:
       # JobManager host
-      jobmanager.rpc.address: flink_jobmanager          # or docker service name
+      jobmanager.rpc.address: jobmanager          # or docker service name
       # Flink REST endpoint
-      rest.address: flink_jobmanager
+      rest.address: jobmanager
       rest.port: 8081
       # SQL Gateway specific
-      sql-gateway.endpoint.rest.address: 0.0.0.0
-      sql-gateway.endpoint.rest.port: 8083    
+      # sql-gateway.enabled: true
+      # sql-gateway.endpoint.rest.address: 0.0.0.0
+      # sql-gateway.endpoint.rest.port: 8083    
       #- JOB_MANAGER_RPC_ADDRESS=jobmanager
-      FLINK_PROPERTIES: |
-       jobmanager.rpc.address: jobmanager
-       taskmanager.numberOfTaskSlots: 4
+      #FLINK_PROPERTIES: |
+      taskmanager.memory.process.size: 1024m #2048m
+      taskmanager.numberOfTaskSlots: 2
     deploy:
-      replicas: 2
+      replicas: 1
 
   ### ============================================================
   # SQL GATEWAY (for Flink SQL)
@@ -154,9 +171,8 @@ services:
     ports:
       - "8083:8083"
     environment:
-      FLINK_PROPERTIES: |
-        jobmanager.rpc.address: flink-jobmanager
-        rest.address: flink-jobmanager
+        # SQL Gateway specific
+        sql-gateway.enabled: true
         sql-gateway.endpoint.rest.address: 0.0.0.0
         sql-gateway.endpoint.rest.port: 8083
     command: /opt/flink/bin/sql-gateway.sh start-foreground      
@@ -173,12 +189,12 @@ services:
   # ZEPPELIN (Flink SQL Notebooks)
   # ============================================================
   zeppelin:
-    image: apache/zeppelin:0.11.1
+    image: apache/zeppelin:0.11.2
     container_name: zeppelin
     # Option2 REMOVED: flink jar inside of zeppelin image , switch to option 1
-    # build:
-    #    context: .
-    #    dockerfile: zeppelin/Dockerfile-zeppelin-flink
+    build:
+      context: .
+      dockerfile: zeppelin/Dockerfile-zeppelin-flink
     depends_on:
       - sql-gateway
     #  - jobmanager
@@ -186,21 +202,29 @@ services:
     ports:
       - "8080:8080"
     environment:
+      JOB_MANAGER_RPC_ADDRESS: jobmanager
       # ZEPPELIN_JAVA_OPTS: >
       #   -Dzeppelin.flink.useLocalFlink=true
       #   -Dzeppelin.flink.ui.enabled=true
       #   -Dzeppelin.flink.run.as.session=true
       #   -DFLINK_HOME=/opt/flink
       #   -Dzeppelin.flink.runMode=remote
-      #   -Dzeppelin.flink.remote.host=jobmanager
-      ZEPPELIN_NOTEBOOK_DIR: /zeppelin/notebook
+      #  -Dzeppelin.flink.remote.host=jobmanager
+      ZEPPELIN_JAVA_OPTS: >
+         -Dzeppelin.flink.useLocalFlink=false
+         -Dzeppelin.flink.ui.enabled=true
+         -Dzeppelin.flink.run.as.session=true
+         -Dzeppelin.flink.runMode=remote
+         -Dzeppelin.flink.remote.host=jobmanager
+      ZEPPELIN_NOTEBOOK_DIR: /notebook #/zeppelin/notebook
+      FLINK_HOME: /opt/flink
       # Interpreter configuration can be updated via Zeppelin UI:
       # %flink.ssql -> Execution Mode: Remote, Remote Host: sql-gateway, Remote Port: 8083      
     volumes:
-      #- ./flink-1.17.1:/opt/flink
+      - ./flink-1.17.1:/opt/flink
       - ./zeppelin/notebooks:/zeppelin/notebook
       - ./zeppelin/conf:/zeppelin/conf
-      - /usr/lib/zeppelin/interpreter
+      #- /usr/lib/zeppelin/interpreter
     # Interpreter configuration can be updated via Zeppelin UI:
     # %flink.ssql -> Execution Mode: Remote, Remote Host: sql-gateway, Remote Port: 8083      
   # ============================================================

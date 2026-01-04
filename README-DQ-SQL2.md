@@ -39,18 +39,38 @@
 # 4 Kafka source → Flink SQL → Cassandra sinks
 # 5 DLQ topics
 ------------------------
+ Clean Docker Cache:
+ Add the --force or -f flag to bypass the confirmation prompt 
+	docker system prune -a --volumes -f
+  command removes dangling (unreferenced) build cache data
+	docker builder prune 
+  Stopped Containers: Use to remove all stopped containers.
+	docker container prune 
+  Unused Images: The command removes dangling images
+	docker image prune 
+	
+  Unused Volumes: The command removes unused volumes. 	
+	docker volume prune 
+	
+ TO check space for Images, Containers, local Volumes, Build Cache:
+	docker system df
+-------------------------
+docker build --no-cache -f Dockerfile-zeppelin-flink -t zeppelin:0.11.2 .	
 -------------------------
 ## Usage notes
   1. Start the local stack:
     # > (from repo root where your docker-compose.yml lives).
       docker-compose up -d --build 
+	  docker build --no-cache -f Dockerfile.flink -t flink-sql-gateway:1.17.1-kafka .
+	  docker-compose build --no-cache zeppelin
     # push image
+		docker image push flink-sql-gateway:1.17.1-kafka
       docker image push [OPTIONS] NAME[:TAG]
       docker image tag confluentinc/cp-zookeeper:7.5.0 zookeeper:7.5.0
       docker image tag obsidiandynamics/kafdrop kafdrop:latest
       docker image tag python:3.10-slim kafka-seeds:latest
 	  docker image tag cassandra:4.1  cassandra_onprem:4.1
-	  docker image tag apache/zeppelin:0.10.1 zeppelin:0.10.1
+	  docker image tag apache/zeppelin:0.11.1 zeppelin:0.11.1
 
 ## What the Error Means => WSL is already installed
 # The service cannot be started because it is disabled
@@ -147,46 +167,10 @@
    # Restart Docker:
 		docker-compose ps   ## will show all running containers
 		docker-compose down
-		docker-compose build --no-cache zeppelin
+		docker-compose build zeppelin
 
-    docker-compose up -d    ## --build
-		docker-compose restart zeppelin --no-cache
-
-    docker-compose up -d --build
-    
-     docker build --no-cache -t zeppelin:latest .
-     docker-compose build --no-cache zeppelin
-     docker-compose up -d zeppelin
-
-    ## Clear build cache only
-      docker builder prune -f
-    ## Clean unused images (still safe)
-      docker image prune -f
-    ## Clean stopped containers + unused networks
-      docker container prune -f
-      docker network prune -f
-    ## Remove containers + images + volumes for THIS project
-      docker-compose down --rmi local --volumes --remove-orphans
-    ## Verify cleaned:
-      docker ps -a
-      docker images
-      docker volume ls  
-    ## Show all env-s bash:
-      env
-      
-     docker exec -it --user root zeppelin bash
-
-    WARN:  time="2025-12-26T15:45:40-05:00" level=warning msg="The \"DD_API_KEY\" variable is not set. Defaulting to a blank string."
-    
-    # Fix:
-    bash:
-      export DD_API_KEY=dummy_key_for_local_test
-      ## ex:
-        DD_API_KEY=00000000000000000000000000000000
-        DD_SITE=datadoghq.com
-      docker-compose up
-      ## Validate:
-      docker exec -it datadog-agent env | grep DD_API_KEY
+        docker-compose up -d    ## --build
+		docker-compose restart zeppelin
 
     make build-jar (requires Maven and the Java project present).
   3. Submit jobs:
@@ -585,12 +569,6 @@ Each notebook:
   
 ##  Inside Zeppelin container:
 	docker exec -it zeppelin ls /opt/zeppelin/interpreter/flink
-
-## Fix  FLINK_HOME is not specified    
-Step 1: Create a dummy directory in Zeppelin container
-  docker exec -it zeppelin mkdir -p /opt/flink
-Step 2: Set this in Zeppelin interpreter
-  FLINK_HOME = /opt/flink
 
 ---------------------    
  01_sources.sql
@@ -1146,11 +1124,6 @@ Steps:
       1. Execution mode: Remote
       2. Remote host: sql-gateway host (or container name)
       3. Remote port: 8083    
-      4. docker exec -it --user root zeppelin bash
-      5.  create empty flink folder:  mkdir /opt/flink
-      6. add to Zeppelink Interpreter UI FLINK_HOME: /opt/flink
-      7. create: mkdir -p /opt/flink/lib
-          touch /opt/flink/lib/dummy.jar
 
 ## Option 2: Provide a Flink Distribution in Zeppelin
   If you want local execution:
@@ -1191,7 +1164,7 @@ Steps:
   # 1.  Open Zeppelin interpreter settings → %flink.ssql.
     2. Set:  
   Execution Mode	Remote
-  Remote Host	<SQL Gateway host> sql-gateway
+  Remote Host	<SQL Gateway host>
   Remote Port	8083
   Flink Home (optional)	leave empty (ignored in remote mode)   
 
@@ -1206,7 +1179,8 @@ Steps:
   - Compute dq_results_* and dq_metrics_*.
   - Optionally send DLQ records to separate Kafka topic.
 
-
+## Fix SQL-gateway:
+  docker exec -it sql-gateway /opt/flink/bin/sql-client.sh gateway
 
 
 ==================================================================
@@ -1258,6 +1232,11 @@ AFTER INSERT OR UPDATE OR DELETE ON users
 ==================================================================
 
 next:
+
 ==================================================================
+
+I can also extend this Compose to include:
+DLQ topic for invalid rows
+Datadog agent + temporary DD_API_KEY
 
 JSON Schema Validation for rules.yaml
