@@ -1,0 +1,23 @@
+FROM flink:1.17.1
+# docker build --no-cache -t flink-sql-gateway:1.17.1-kafka .
+ENV FLINK_HOME=/opt/flink
+# Add Kafka SQL connector for Flink 1.17.1 required for Kafka connector=kakfa in SQL queries
+ADD https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/1.17.1/flink-sql-connector-kafka-1.17.1.jar /opt/flink/lib/
+
+# Optional: JSON format (usually included, but safe)
+ADD https://repo1.maven.org/maven2/org/apache/flink/flink-json/1.17.1/flink-json-1.17.1.jar /opt/flink/lib/
+
+# ADD https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/4.1.1/kafka-clients-4.1.1.jar /opt/flink/lib/
+
+COPY flink/startup /opt/flink/startup
+COPY flink/sql /opt/flink/sql
+COPY dq /opt/flink/dq
+WORKDIR /opt/flink
+
+# Ensure all scripts in /opt/flink/startup are executable
+RUN chmod +x /opt/flink/startup/*.*
+RUN chmod +x /opt/flink/lib/*.*
+
+# (Optional step) Verify that the Kafka connector jar is added
+# RUN ls -lh /opt/flink/lib | grep kafka
+

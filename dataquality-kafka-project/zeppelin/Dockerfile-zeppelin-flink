@@ -1,0 +1,40 @@
+FROM apache/zeppelin:0.11.2
+
+USER root
+RUN apt-get update && apt-get install -y curl
+# RUN apk add --no-cache \
+#     curl \
+#     bash \
+#     coreutils
+
+# Download Zeppelin full distribution (includes Flink interpreter)
+#RUN curl -L https://archive.apache.org/dist/zeppelin/zeppelin-0.10.1/zeppelin-0.10.1-bin-all.tgz \
+#    | tar -xz --strip=1 -C /opt/zeppelin
+## Add Shell interpreter to Zeppelin
+# RUN sed -i 's/^# zeppelin.interpreter.shell/zeppelin.interpreter.shell/' \
+#     /opt/zeppelin/conf/zeppelin-site.xml
+
+# Create Flink directory
+RUN mkdir -p /opt/flink
+# Install Flink inside Zeppelin
+#RUN curl -L https://archive.apache.org/dist/flink/flink-1.17.1/flink-1.17.1-bin-scala_2.11.tgz \
+#    | tar -xz -C /opt/flink
+
+COPY /zeppelin/flink-1.17.1-bin-scala_2.12/flink opt/flink
+
+# Add Kafka SQL connector for Flink 1.17.1 required for Kafka connector=kakfa in SQL queries
+ADD https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/1.17.1/flink-sql-connector-kafka-1.17.1.jar /opt/flink/lib/
+# Optional: JSON format (usually included, but safe)
+ADD https://repo1.maven.org/maven2/org/apache/flink/flink-json/1.17.1/flink-json-1.17.1.jar /opt/flink/lib/
+# ADD https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/4.1.1/kafka-clients-4.1.1.jar /opt/flink/lib/
+# Copy startup scripts for Flink SQL Gateway
+#COPY sql-gateway/flink/startup /opt/flink/startup
+
+
+#ENV FLINK_HOME=/opt/flink-1.17.1
+ENV FLINK_HOME=/opt/flink
+
+# WORKDIR /opt/flink
+
+# Doesn't support user zeppelin, keep root user
+#USER zeppelin

@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+import sys
+import yaml
+
+def load_rules(path):
+    with open(path, "r") as f:
+        return yaml.safe_load(f)
+
+def generate_case(rules):
+    case_lines = []
+    for rule in rules:
+        condition = rule.get("when")
+        status = rule["emit"]["dq_status"]
+
+        if not condition:
+            continue
+
+        # IMPORTANT: do NOT evaluate condition
+        # Treat it as SQL string
+        case_lines.append(
+            f"WHEN {condition} THEN '{status}'"
+        )
+
+    case_lines.append("ELSE 'VALID'")
+    return "CASE\n  " + "\n  ".join(case_lines) + "\nEND AS dq_status"
+
+def generate_sql(cfg):
+    case_expr = generate_case(cfg["rules"])
+
+    sql = f"""
+CREATE VIEW {cfg['outputs']['table']} AS
+SELECT
+  t1.pk,
+  t1.action,
+  {case_expr},
+  t1.hash_onprem,
+  t2.hash_cloud,
+  CURRENT_TIMESTAMP AS processing_time
+FROM topic1_onprem t1
+LEFT JOIN topic2_cloud t2
+  ON t1.pk = t2.pk;
+"""
+    return sql.strip()
+
+def generate_sql(cfg):
+    status_case = generate_case(cfg["rules"])
+    reason_case = generate_reason_case(cfg["rules"])
+
+    return f"""
+CREATE VIEW {cfg['outputs']['table']} AS
+SELECT
+  t1.pk,
+  t1.action,
+  {status_case},
+  {reason_case},
+  t1.hash_onprem,
+  t2.hash_cloud,
+  CURRENT_TIMESTAMP AS processing_time
+FROM enriched_events t1
+LEFT JOIN topic2_cloud t2
+  ON t1.pk = t2.pk;
+""".strip()
+
+def generate_reason_case(rules):
+    reason_lines = []
+    for rule in rules:
+        condition = rule.get("when")
+        reason = rule["emit"].get("dq_reason")
+
+        if not condition or not reason:
+            continue
+
+        # IMPORTANT: do NOT evaluate condition
+        # Treat it as SQL string
+        reason_lines.append(
+            f"WHEN {condition} THEN '{reason}'"
+        )
+
+    reason_lines.append("ELSE 'OK'")
+    return "CASE\n  " + "\n  ".join(reason_lines) + "\nEND AS dq_reason"
+
+## Add Metric Generator
+def generate_metric_columns(rules):
+    metrics = []
+
+    for rule in rules:
+        emit = rule.get("emit", {})
+        metric = emit.get("metric")
+        condition = rule.get("when")
+
+        if not metric or not condition:
+            continue
+
+        metrics.append(f"""
+SUM(
+  CASE
+    WHEN {condition} THEN 1
+    ELSE 0
+  END
+) AS {metric}
+""".strip())
+
+    return ",\n".join(metrics)
+
+def generate_metrics_view(cfg):
+    metrics_sql = generate_metric_columns(cfg)
+    window = cfg["metrics"]["window"]
+
+    src = cfg["sources"]["topic1_onprem"]
+    env = cfg["metadata"]["env"]
+    dc = src["dc"]
+    table = src["table"]
+    topic = src["topic"]
+
+    return f"""
+        CREATE VIEW dq_metrics AS
+        SELECT
+        TUMBLE_START(processing_time, INTERVAL '{window}') AS window_start,
+        '{env}'   AS env,
+        '{dc}'    AS dc,
+        '{table}' AS table_name,
+        '{topic}' AS topic_name,
+        {metrics_sql}
+        FROM dq_results
+        GROUP BY
+        TUMBLE(processing_time, INTERVAL '{window}'),
+        env,
+        dc,
+        table_name,
+        topic_name;
+        """.strip()
+
+## End Metric Generator
+
+if __name__ == "__main__":
+    rules_path = sys.argv[1]
+    config = load_rules(rules_path)
+    print(generate_sql(config))

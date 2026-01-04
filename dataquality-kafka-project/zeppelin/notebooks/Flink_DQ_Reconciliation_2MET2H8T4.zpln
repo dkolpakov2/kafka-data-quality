@@ -1,0 +1,72 @@
+{
+  "paragraphs": [
+    {
+      "title": "1 - OnPrem hashes view",
+      "text": "%flink.ssql\nCREATE VIEW IF NOT EXISTS cass_onprem_hashes AS\nSELECT id, row_hash FROM cassandra_onprem;",
+      "user": "anonymous",
+      "dateUpdated": "2025-12-26 17:33:20.944",
+      "progress": 0,
+      "config": {},
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "apps": [],
+      "runtimeInfos": {},
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_1766770400944_1690854650",
+      "id": "paragraph_1766770400932_1834431051",
+      "dateCreated": "2025-12-26 17:33:20.944",
+      "status": "READY"
+    },
+    {
+      "title": "2 - Cloud hashes view",
+      "text": "%flink.ssql\nCREATE VIEW IF NOT EXISTS cass_cloud_hashes AS\nSELECT id, row_hash FROM cassandra_cloud;",
+      "user": "anonymous",
+      "dateUpdated": "2025-12-26 17:33:20.944",
+      "progress": 0,
+      "config": {},
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "apps": [],
+      "runtimeInfos": {},
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_1766770400944_1223151223",
+      "id": "paragraph_1766770400932_488055109",
+      "dateCreated": "2025-12-26 17:33:20.944",
+      "status": "READY"
+    },
+    {
+      "title": "3 - Reconciliation (find drift)",
+      "text": "%flink.ssql\nCREATE VIEW reconciliation AS\nSELECT COALESCE(a.id,b.id) AS id, a.row_hash AS onprem_hash, b.row_hash AS cloud_hash,\nCASE WHEN a.row_hash IS NULL THEN \u0027MISSING_IN_ONPREM\u0027\nWHEN b.row_hash IS NULL THEN \u0027MISSING_IN_CLOUD\u0027\nWHEN a.row_hash \u003c\u003e b.row_hash THEN \u0027DRIFT\u0027 ELSE \u0027OK\u0027 END AS status\nFROM cass_onprem_hashes a FULL OUTER JOIN cass_cloud_hashes b ON a.id \u003d b.id;\n\nSELECT * FROM reconciliation WHERE status \u003c\u003e \u0027OK\u0027 LIMIT 200;",
+      "user": "anonymous",
+      "dateUpdated": "2025-12-26 17:33:20.945",
+      "progress": 0,
+      "config": {},
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "apps": [],
+      "runtimeInfos": {},
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_1766770400945_676847881",
+      "id": "paragraph_1766770400932_1042581838",
+      "dateCreated": "2025-12-26 17:33:20.945",
+      "status": "READY"
+    }
+  ],
+  "name": "Flink_DQ_Reconciliation",
+  "id": "2MET2H8T4",
+  "defaultInterpreterGroup": "spark",
+  "version": "0.10.1",
+  "noteParams": {},
+  "noteForms": {},
+  "angularObjects": {},
+  "config": {
+    "isZeppelinNotebookCronEnable": false
+  },
+  "info": {}
+}

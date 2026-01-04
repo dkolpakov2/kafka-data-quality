@@ -1,0 +1,183 @@
+version: 1
+
+metadata:
+  env: prod
+  pipeline: cassandra-cross-dc-dq
+
+sources:
+  topic1_onprem:
+    alias: t1
+    topic: onprem.events
+    table: customer_onprem
+    dc: onprem
+
+  topic2_cloud:
+    alias: t2
+    topic: cloud.hashes
+    table: customer_cloud
+    dc: azure
+
+metrics:
+  namespace: dq.cassandra
+  window: 1 MINUTE
+
+rules:
+  - name: delete_event
+    description: Delete event - hash comparison skipped
+    when: t1.action = 'DELETE'
+    emit:
+      dq_status: DELETE_EVENT
+      metric: delete_count
+      severity: INFO
+
+  - name: missing_cloud
+    description: Missing row in cloud Cassandra
+    when: t1.action != 'DELETE' AND t2.pk IS NULL
+    emit:
+      dq_status: MISSING_CLOUD
+      metric: missing_cloud
+      severity: ERROR
+
+  - name: hash_mismatch
+    description: Hash mismatch between DCs
+    when: t1.action != 'DELETE' AND t1.hash_onprem != t2.hash_cloud
+    emit:
+      dq_status: MISMATCH
+      metric: hash_mismatch
+      severity: ERROR
+
+outputs:
+  table: dq_results
+#  format: parquet
+  partition_by: dq_date
+  clustering_by: dq_status
+  location: data-quality-results/cassandra/dq_results/
+#   s3://data-quality-results/cassandra/dq_results/
+  retention_days: 30
+  checkpoint_location: data-quality-checkpoints/cassandra/dq_checkpoint/
+  #s3://data-quality-checkpoints/cassandra/dq_checkpoint/
+  write_mode: append
+  trigger_interval: 5 MINUTES
+  batch_size: 10000
+  batch_interval: 2 MINUTES
+  max_retries: 3
+  retry_interval: 1 MINUTE
+  alerting:
+    enabled: true
+    severity_threshold: ERROR
+    alert_recipients:
+      - data-quality-alerts@company.com
+    alert_methods:
+      - email
+      - datadog
+    #   - slack 
+    # slack_webhook_url: 
+    # slack_channel: '#data-quality-alerts'
+    # slack_username: 'DQ Alert Bot'
+    # slack_icon_emoji: ':warning:'
+    monitoring:
+      enabled: true
+      monitoring_interval: 15 MINUTES
+      monitoring_metrics:
+        - delete_count
+        - missing_cloud
+        - hash_mismatch
+      monitoring_dashboard_url: https://monitoring.company.com/dashboards/data-quality
+      monitoring_alert_thresholds:
+        missing_cloud: 100
+        hash_mismatch: 50
+      monitoring_alert_recipients:
+        - data-quality-alerts@company.com
+      monitoring_alert_methods: 
+        - email
+      #   - slack       
+      # slack_webhook_url:
+      # slack_channel: '#data-quality-monitoring'
+      # slack_username: 'DQ Monitoring Bot' 
+      # slack_icon_emoji: ':bar_chart:'
+    logging: 
+      level: INFO
+      log_to_file: true
+      log_file_path: /var/log/data-quality/dq_pipeline.log
+      max_log_file_size_mb: 100
+      max_log_file_backups: 5
+      log_retention_days: 30
+    metrics_reporting:
+      enabled: true 
+      reporting_interval: 5 MINUTES
+      reporting_metrics:
+        - delete_count
+        - missing_cloud
+        - hash_mismatch
+      reporting_endpoint: https://metrics.company.com/report
+      reporting_api_key: API_KEY
+    data_lineage:
+      enabled: true
+      lineage_tool: OpenLineage
+      lineage_endpoint: https://lineage.company.com/api/v1/lineage
+      lineage_api_key: API_KEY
+      capture_inputs: true
+      capture_outputs: true
+      capture_transformations: true
+      lineage_namespace: data-quality
+      lineage_job_name: cassandra-cross-dc-dq
+      lineage_run_id_prefix: dq_run_
+
+      lineage_additional_metadata:
+        team: data-platform
+        project: cassandra-reconciliation 
+        environment: production
+      lineage_emit_frequency: per_batch
+      lineage_emit_on_failure: true
+      lineage_emit_on_success: true
+      lineage_custom_facets:
+        - name: data_quality_rules_version
+          value: v2.0
+        - name: reconciliation_strategy
+          value: hash_comparison
+        - name: data_sources
+          value: onprem_cassandra, cloud_cassandra
+        - name: dc_locations
+          value: onprem, azure
+        - name: alerting_configured
+          value: true
+        - name: monitoring_configured
+          value: true
+        - name: metrics_reporting_configured
+          value: true
+        - name: data_lineage_configured
+          value: true
+        - name: pipeline_owner
+          value: data-platform-team 
+        - name: pipeline_description
+          value: Cassandra cross-DC data quality reconciliation using hash comparison
+        - name: sla
+          value: 99.9%  
+        - name: compliance_requirements
+          value: GDPR, HIPAA
+        - name: data_sensitivity_level
+          value: confidential
+        - name: retention_policy
+          value: 30 days  
+        - name: backup_strategy
+          value: daily incremental, weekly full
+        - name: recovery_point_objective
+          value: 15 minutes
+        - name: recovery_time_objective
+          value: 1 hour 
+        - name: change_management_process
+          value: documented and approved
+        - name: incident_response_plan
+          value: established and tested
+        - name: sla_monitoring_tool
+          value: company_sla_monitoring
+        - name: data_governance_framework
+          value: company_data_governance  
+        - name: data_quality_standards
+          value: company_data_quality_standards
+        - name: data_security_measures
+          value: encryption, access_control
+        - name: privacy_compliance_measures
+          value: data_masking, anonymization
+        - name: audit_logging_practices
+          value: enabled and monitored

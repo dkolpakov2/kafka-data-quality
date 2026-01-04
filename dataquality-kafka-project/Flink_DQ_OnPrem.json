@@ -1,0 +1,33 @@
+{
+  "name": "Flink SQL Data Quality – OnPrem Cassandra",
+  "paragraphs": [
+    {
+      "title": "01 Kafka Source",
+      "text": "%flink.sql\nCREATE TABLE kafka_onprem_source (\n  id STRING,\n  event_ts TIMESTAMP(3),\n  value DOUBLE,\n  raw_json STRING,\n  WATERMARK FOR event_ts AS event_ts - INTERVAL '5' SECOND\n) WITH (\n  'connector' = 'kafka',\n  'topic' = 'topic_onprem_sales',\n  'properties.bootstrap.servers' = 'kafka:9092',\n  'format' = 'json'\n);"
+    },
+    {
+      "title": "02 DQ Enrichment + Hash",
+      "text": "%flink.sql\nCREATE VIEW dq_enriched AS\nSELECT\n  id,\n  event_ts,\n  value,\n  SHA256(\n    CONCAT_WS('|',\n      COALESCE(id, 'NULL'),\n      COALESCE(CAST(value AS STRING), 'NULL'),\n      CAST(event_ts AS STRING)\n    )\n  ) AS record_hash,\n  raw_json\nFROM kafka_onprem_source;"
+    },
+    {
+      "title": "03 Rule Evaluation",
+      "text": "%flink.sql\nCREATE VIEW dq_rules AS\nSELECT *,\n  CASE\n    WHEN id IS NULL THEN 'FAIL_ID_NULL'\n    WHEN value < 0 THEN 'FAIL_NEG_VALUE'\n    WHEN event_ts IS NULL THEN 'FAIL_TS_NULL'\n    ELSE 'PASS'\n  END AS dq_status\nFROM dq_enriched;"
+    },
+    {
+      "title": "04 Cassandra Sink (OnPrem)",
+      "text": "%flink.sql\nCREATE TABLE cassandra_onprem_sink (\n  id STRING,\n  event_ts TIMESTAMP(3),\n  value DOUBLE,\n  record_hash STRING,\n  PRIMARY KEY (id) NOT ENFORCED\n) WITH (\n  'connector' = 'cassandra',\n  'keyspace' = 'sales',\n  'table' = 'events',\n  'hosts' = '10.10.0.5,10.10.0.6',\n  'datacenter' = 'DC_ONPREM'\n);"
+    },
+    {
+      "title": "05 Insert Valid Rows",
+      "text": "%flink.sql\nINSERT INTO cassandra_onprem_sink\nSELECT id, event_ts, value, record_hash\nFROM dq_rules\nWHERE dq_status = 'PASS';"
+    },
+    {
+      "title": "06 Valid Row Counter",
+      "text": "%flink.sql\nINSERT INTO dq_valid_metrics\nSELECT\n  'flink_onprem_job' AS job_name,\n  TUMBLE_END(event_ts, INTERVAL '1' MINUTE) AS metric_ts,\n  COUNT(*) AS valid_count\nFROM dq_rules\nWHERE dq_status = 'PASS'\nGROUP BY TUMBLE(event_ts, INTERVAL '1' MINUTE);"
+    },
+    {
+      "title": "07 Invalid Row Counter",
+      "text": "%flink.sql\nINSERT INTO dq_invalid_metrics\nSELECT\n  'flink_onprem_job' AS job_name,\n  TUMBLE_END(event_ts, INTERVAL '1' MINUTE) AS metric_ts,\n  COUNT(*) AS invalid_count\nFROM dq_rules\nWHERE dq_status <> 'PASS'\nGROUP BY TUMBLE(event_ts, INTERVAL '1' MINUTE);"
+    }
+  ]
+}

@@ -1,0 +1,102 @@
+version: 1
+
+metadata:
+  pipeline: kafka-flink-cassandra-dq
+  owner: data-platform
+  description: Data Quality rules for cross-DC Cassandra reconciliation
+
+sources:
+  topic1_onprem:
+    type: kafka
+    alias: t1
+    description: On-prem Kafka topic with source events
+
+  topic2_cloud:
+    type: kafka
+    alias: t2
+    description: Cloud Kafka topic generated from Cassandra lookup
+
+join:
+  type: left
+  on:
+    - t1.pk = t2.pk
+  window:
+    type: event_time
+    size: 10 MINUTES
+    grace: 5 MINUTES
+
+rules:
+
+  # ─────────────────────────────
+  # DELETE handling
+  # ─────────────────────────────
+  - name: delete_event
+    description: Skip hash comparison for DELETE events
+    when: t1.action = 'DELETE'
+    emit:
+      dq_status: 'DELETE_EVENT'
+      metric: dq_delete_count
+
+  # ─────────────────────────────
+  # Missing PK
+  # ─────────────────────────────
+  - name: missing_pk
+    description: PK is mandatory for reconciliation
+    when: t1.pk IS NULL
+    emit:
+      dq_status: 'MISSING_PK'
+      metric: dq_missing_pk
+
+  # ─────────────────────────────
+  # Missing cloud row
+  # ─────────────────────────────
+  - name: missing_cloud_row
+    description: PK exists on-prem but not in cloud Cassandra
+    when: t1.action != 'DELETE' AND t2.pk IS NULL
+    emit:
+      dq_status: 'MISSING_CLOUD'
+      metric: dq_missing_cloud
+
+  # ─────────────────────────────
+  # Hash match
+  # ─────────────────────────────
+  - name: hash_match
+    description: Hash matches between on-prem and cloud
+    when: t1.action != 'DELETE' AND t1.hash_onprem = t2.hash_cloud
+    emit:
+      dq_status: 'MATCH'
+      metric: dq_hash_match
+
+  # ─────────────────────────────
+  # Hash mismatch
+  # ─────────────────────────────
+  - name: hash_mismatch
+    description: Hash mismatch between on-prem and cloud
+    when: t1.action != 'DELETE' AND t1.hash_onprem != t2.hash_cloud
+    emit:
+      dq_status: 'MISMATCH'
+      metric: dq_hash_mismatch
+
+  # ─────────────────────────────
+  # Invalid hash format
+  # ─────────────────────────────
+  - name: invalid_hash
+    description: Hash format is invalid
+    when: t1.hash_onprem IS NOT NULL AND NOT REGEXP_LIKE(t1.hash_onprem, '^[a-f0-9]{64}$')
+    emit:
+      dq_status: 'INVALID_HASH'
+      metric: dq_invalid_hash
+
+outputs:
+  table: dq_results
+  fields:
+    - pk
+    - action
+    - dq_status
+    - t1.hash_onprem
+    - t2.hash_cloud
+    - processing_time
+
+metrics:
+  type: counter
+  namespace: dq.cassandra

@@ -1,0 +1,186 @@
+
+services:
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    depends_on: [zookeeper]
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+# ============================================================
+# KAFKA REST PROXY for easy producing/consuming via REST API
+# ============================================================
+
+  rest-proxy:
+    image: confluentinc/cp-kafka-rest:7.5.0
+    container_name: rest-proxy
+    depends_on:
+      - kafka
+    ports:
+      - "8082:8082"
+    environment:
+      KAFKA_REST_BOOTSTRAP_SERVERS: "kafka:9092"
+      KAFKA_REST_LISTENERS: "http://0.0.0.0:8082"      
+# ============================================================
+# KAFDROP - KAFKA WEB UI 
+# ============================================================
+  kafkadrop:
+    image: obsidiandynamics/kafdrop
+    container_name: kafkadrop
+    depends_on:
+      - kafka
+    ports:
+      - "9000:9000"
+    environment:
+      KAFKA_BROKERCONNECT: kafka:9092      
+# ============================================================
+# KAFKA SEEDER
+# ============================================================
+  kafka-seeder:
+    image: python:3.10-slim
+    container_name: kafka-seeder
+    depends_on:
+      - kafka
+    #command: [ "python", "/app/seeder.py" ]
+    working_dir: /app
+    command: >
+      sh -c "pip install --no-cache-dir -r kafka-seeder/requirements.txt &&
+           python kafka-seeder/seeder.py"
+    environment:
+      KAFKA_BROKER: "kafka:9092"
+      KAFKA_TOPIC: "topic_onprem"
+      KAFKA_TOPIC2: "topic_cloud"
+      KAFKA_TOPIC3: "topic1"
+      KAFKA_TOPIC4: "topic2"
+      MESSAGE_RATE: "1"         # messages per second
+      MESSAGE_LIMIT: "100"      # total messages to send
+    volumes:
+      - ./kafka-seeder:/app
+  cassandra:
+    image: cassandra:4.1
+    container_name: cassandra_onprem
+    ports:
+      - "9042:9042"
+
+  jobmanager:
+    image: flink:1.17.1
+    command: jobmanager
+    container_name: jobmanager
+    ports:
+      - "8081:8081"
+    environment:
+      - JOB_MANAGER_RPC_ADDRESS=jobmanager
+
+  taskmanager:
+    image: flink:1.17.1
+    container_name: taskmanager
+    command: taskmanager
+    depends_on: [jobmanager]
+    environment:
+      - JOB_MANAGER_RPC_ADDRESS=jobmanager
+
+  sql-gateway:
+    image: flink-sql-gateway:1.17.1-kafka  #flink:1.17.1
+    container_name: flink-sql-gateway
+    # working_dir: /opt/flink    
+    build:
+      context: .
+      dockerfile: Dockerfile.flink    
+    depends_on:
+      - jobmanager
+    ports:
+      - "8083:8083"
+    environment:
+      classloader.resolve-order: parent-first
+      job.manager.rpc.address: jobmanager
+      sql-gateway.enabled: true
+      sql-gateway.endpoint.rest.address: 0.0.0.0
+      sql-gateway.endpoint.rest.port: 8083
+    volumes:
+      - ./flink/sql:/opt/flink/sql
+      - ./flink/startup:/opt/flink/startup
+      - ./flink/startup:/opt/flink/lib
+      - ./dq:/opt/flink/dq
+      # Start SQL Gateway  -Djobmanager.rpc.address=jobmanager 
+    command: >
+      bash -c "
+      /opt/flink/bin/sql-gateway.sh start -Dsql-gateway.endpoint.rest.address=0.0.0.0 -Dsql-gateway.endpoint.rest.port=8083 && 
+      sleep 15 &&
+      /opt/flink/startup/deploy-sql.sh &&
+      tail -f /opt/flink/log/*.log
+      "
+  # ============================================================
+  # ZEPPELIN (Flink SQL Notebooks)
+  # ============================================================
+  # zeppelin:
+  #   image: apache/zeppelin:0.11.2
+  #   ports:
+  #     - "8080:8080"
+  #   environment:
+  #     - ZEPPELIN_FLINK_MASTER=jobmanager:8081
+  zeppelin:
+    #image: apache/zeppelin:0.11.2
+    image: zeppelin:1.17.1-flink
+    # Option2 REMOVED: flink jar inside of zeppelin image , switch to option 1
+    #build:
+    #  context: .
+    #  dockerfile: zeppelin/Dockerfile-zeppelin-flink
+    container_name: zeppelin
+    depends_on:
+    #  - sql-gateway
+      - jobmanager
+    #  - taskmanager
+    ports:
+      - "8080:8080"
+    environment:
+      ZEPPELIN_FLINK_MASTER: jobmanager
+      JOB_MANAGER_RPC_ADDRESS: jobmanager
+      # ZEPPELIN_JAVA_OPTS: >
+      #   -Dzeppelin.flink.useLocalFlink=true
+      #   -Dzeppelin.flink.ui.enabled=true
+      #   -Dzeppelin.flink.run.as.session=true
+      #   -DFLINK_HOME=/opt/flink
+      #   -Dzeppelin.flink.runMode=remote
+      #  -Dzeppelin.flink.remote.host=jobmanager
+      ZEPPELIN_JAVA_OPTS: >
+         -Dzeppelin.flink.useLocalFlink=false
+         -Dzeppelin.flink.ui.enabled=true
+         -Dzeppelin.flink.run.as.session=true
+         -Dzeppelin.flink.runMode=remote
+         -Dzeppelin.flink.remote.host=jobmanager
+      ZEPPELIN_NOTEBOOK_DIR: /zeppelin/notebook
+      FLINK_HOME: /opt/flink
+
+      # Interpreter configuration can be updated via Zeppelin UI:
+      # %flink.ssql -> Execution Mode: Remote, Remote Host: sql-gateway, Remote Port: 8083      
+
+    volumes:
+      - ./flink:/opt/flink        
+      - ./flink-1.17.1:/opt/flink
+      - ./zeppelin/notebooks:/zeppelin/notebook
+      - ./zeppelin/conf:/zeppelin/conf
+      #- /usr/lib/zeppelin/interpreter
+    # Interpreter configuration can be updated via Zeppelin UI:
+    # %flink.ssql -> Execution Mode: Remote, Remote Host: sql-gateway, Remote Port: 8083      
+
+
+  datadog:
+    image: datadog/agent:latest
+    container_name: datadog
+    environment:
+      DD_API_KEY: your_api_key
+      DD_SITE: datadoghq.com
+      DD_DOGSTATSD_NON_LOCAL_TRAFFIC: "true"
+    ports:
+      - "8125:8125/udp"
