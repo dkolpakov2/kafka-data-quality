@@ -1,0 +1,8 @@
+rules:
+  - name: non_negative
+    field: value
+    type: threshold
+    min: 0
+  - name: required_fields
+    fields: [id, timestamp, value]
+    type: required

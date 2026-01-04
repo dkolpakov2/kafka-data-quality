@@ -1,0 +1,126 @@
+# Feed Kafka Topic by python script in Zeppelin
+
+##  Create Zeppelin Paragraph:
+
+## It will do:
+| Feature                | Status            |
+| ---------------------- | ----------------- |
+| Kafka producer         | ✅                 |
+| JSON messages          | ✅                 |
+| Rate limit             | ✅ 10 messages/min |
+| Zeppelin compatible    | ✅                 |
+| Works with SQL Gateway | ✅                 |
+## MEssage Format:
+{
+  "pk": "uuid",
+  "hash": "hash_uuid",
+  "payload": "payload_1",
+  "ts": "2026-01-04T10:15:00.000Z"
+}
+
+## Will fit in:
+## SQL:
+CREATE TABLE topic1_source (
+  pk STRING,
+  hash STRING,
+  payload STRING,
+  ts TIMESTAMP(3)
+)
+
+## How to verify messages
+# flink.sql
+SELCT * FROM topic1_source
+
+
+## CLI:
+docker exec -it kafka \
+  kafka-console-consumer.sh \
+  --bootstrap-server kafka:9092 \
+  --topic topic1 \
+  --from-beginning
+
+## Confluent Cloud
+BOOTSTRAP_SERVERS = "pkc-xxx.aws.confluent.cloud:9092"
+SASL_MECHANISM = "PLAIN"
+SASL_USERNAME = "API KEY"
+SASL_PASSWORD = "API SECRET"
+
+## 🔹 AWS MSK (IAM via SCRAM)
+SASL_MECHANISM = "SCRAM-SHA-512"
+
+## Azure Event Hubs (Kafka)
+SASL_MECHANISM = "PLAIN"
+SASL_USERNAME = "$ConnectionString"
+SASL_PASSWORD = "Endpoint=sb://..."
+
+## Required Files if TLS
+
+volumes:
+  - ./certs:/opt/certs
+  
+## Test Connectivity
+  docker exec -it zeppelin \
+  python - <<EOF
+	from kafka import KafkaProducer
+	print("Kafka client OK")
+	EOF
+
+
+## %flink.pyflink
+
+from kafka import KafkaProducer
+import json
+import time
+import uuid
+from datetime import datetime
+
+# -----------------------------
+# CONFIG
+# -----------------------------
+BOOTSTRAP_SERVERS = "kafka:9092"
+TOPIC = "topic1"
+MESSAGES_PER_MINUTE = 10
+INTERVAL_SECONDS = 60 / MESSAGES_PER_MINUTE
+TOTAL_MESSAGES = 10   # total messages to send (change if needed)
+
+# -----------------------------
+# PRODUCER
+# -----------------------------
+producer = KafkaProducer(
+    bootstrap_servers=BOOTSTRAP_SERVERS,
+    value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+    key_serializer=lambda k: k.encode("utf-8")
+)
+
+print(f"Producing {TOTAL_MESSAGES} messages to topic '{TOPIC}' "
+      f"at {MESSAGES_PER_MINUTE} msg/min")
+
+# -----------------------------
+# SEND LOOP
+# -----------------------------
+for i in range(TOTAL_MESSAGES):
+    pk = str(uuid.uuid4())
+
+    message = {
+        "pk": pk,
+        "hash": f"hash_{pk}",
+        "payload": f"payload_{i}",
+        "ts": datetime.utcnow().isoformat()
+    }
+
+    producer.send(
+        topic=TOPIC,
+        key=pk,
+        value=message
+    )
+
+    producer.flush()
+    print(f"[{i+1}/{TOTAL_MESSAGES}] Sent message with pk={pk}")
+
+    time.sleep(INTERVAL_SECONDS)
+
+producer.close()
+print("Done sending messages.")
+
+
+##  ======================#############################################################

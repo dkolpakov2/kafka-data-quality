@@ -1,0 +1,4 @@
+{
+  "method": "zscore",
+  "threshold": 3
+}

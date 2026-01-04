@@ -1,0 +1,4 @@
+version: '3.8'
+services:
+  flink-sql-gateway:
+    image: flink:1.17.1

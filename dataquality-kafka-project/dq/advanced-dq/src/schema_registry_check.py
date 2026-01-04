@@ -1,0 +1,1 @@
+print('schema registry check stub')
