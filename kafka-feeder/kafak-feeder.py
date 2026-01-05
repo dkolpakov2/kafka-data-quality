@@ -12,13 +12,15 @@ from datetime import datetime
 BOOTSTRAP_SERVERS = "broker1:9093,broker2:9093"
 TOPIC = "topic1"
 
-SECURITY_PROTOCOL = "SASL_SSL"
+SECURITY_PROTOCOL = "SSL"
 SASL_MECHANISM = "PLAIN"  # PLAIN | SCRAM-SHA-256 | SCRAM-SHA-512
+SSL_KEYSTORE_LOCATION = "/opt/kafka/secrets/client.keystore.jks"
+SSL_TRUSTSTORE_LOCATION = "/opt/kafka/secrets/client.truststore.jks"
+SSL_KEYSTORE_PASSWORD = "keystore-password"
+SSL_TRUSTSTORE_PASSWORD = "truststore-password"
 
-SASL_USERNAME = "YOUR_USERNAME"
-SASL_PASSWORD = "YOUR_PASSWORD"
 
-CA_FILE = "/opt/certs/ca.pem"  # optional
+# CA_FILE = "/opt/certs/ca.pem"  # optional
 
 # ==========================
 # RATE LIMIT

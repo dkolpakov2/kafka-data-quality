@@ -55,9 +55,39 @@ SASL_PASSWORD = "Endpoint=sb://..."
 
 ## Required Files if TLS
 
+Required File Mounts (Docker)
+Your Zeppelin container must have access to keystore & truststore:
+# Structure:
+kafka-secrets/
+├── client.keystore.jks
+└── client.truststore.jks
+
+
+zeppelin:
+  image: apache/zeppelin:0.11.2
+  volumes:
+    - ./kafka-secrets:/opt/kafka/secrets
+
+# Structure:
 volumes:
   - ./certs:/opt/certs
-  
+
+## Kafka Broker Requirements
+  listeners=SSL://:9093
+ssl.client.auth=required
+
+## Validate SSL Connectivity inside Zeppelin:
+keytool -list -keystore /opt/kafka/secrets/client.keystore.jks
+
+
+## Notes / Pitfalls
+
+✔ Kafka-Python supports JKS directly
+✔ No SASL used
+✔ Mutual TLS authentication
+✔ Works with Kafka Connect & Flink SQL
+
+
 ## Test Connectivity
   docker exec -it zeppelin \
   python - <<EOF
