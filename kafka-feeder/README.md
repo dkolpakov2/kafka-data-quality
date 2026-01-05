@@ -87,6 +87,37 @@ keytool -list -keystore /opt/kafka/secrets/client.keystore.jks
 ✔ Mutual TLS authentication
 ✔ Works with Kafka Connect & Flink SQL
 
+## Fails for 
+import from kafka KafkaProducer
+
+>> add to new paragraph:
+import sys
+!pip install kafka-python
+print(sys.version)
+print(sys.path)
+
+>> or in Docker:
+RUN pip install kafka-python
+>> or Dockerfile:
+	Dockerfile (CORRECT)
+	FROM apache/zeppelin:0.11.2
+
+	USER root
+
+	# Upgrade pip first (CRITICAL)
+	RUN python3 -m pip install --upgrade pip setuptools wheel
+
+	# Install compatible kafka-python
+	RUN pip install kafka-python==2.0.2
+
+	USER zeppelin
+
+>> Build:
+docker-compose build --no-cache zeppelin
+docker-compose up -d
+
+>> and validate:
+docker exec -it zeppelin python -c "import kafka; print(kafka.__version__)"
 
 ## Test Connectivity
   docker exec -it zeppelin \
