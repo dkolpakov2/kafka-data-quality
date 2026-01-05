@@ -35,16 +35,24 @@ TOTAL_MESSAGES = 10
 producer = KafkaProducer(
     bootstrap_servers=BOOTSTRAP_SERVERS.split(","),
     security_protocol=SECURITY_PROTOCOL,
-    sasl_mechanism=SASL_MECHANISM,
-    sasl_plain_username=SASL_USERNAME,
-    sasl_plain_password=SASL_PASSWORD,
-    ssl_cafile=CA_FILE,
+    #sasl_mechanism=SASL_MECHANISM,
+    #sasl_plain_username=SASL_USERNAME,
+    #sasl_plain_password=SASL_PASSWORD,
+    #ssl_cafile=CA_FILE,
+ 
+    ssl_keystore_location=SSL_KEYSTORE_LOCATION,
+    ssl_keystore_password=SSL_KEYSTORE_PASSWORD,
+
+    ssl_truststore_location=SSL_TRUSTSTORE_LOCATION,
+    ssl_truststore_password=SSL_TRUSTSTORE_PASSWORD,
+
     value_serializer=lambda v: json.dumps(v).encode("utf-8"),
     key_serializer=lambda k: k.encode("utf-8"),
-    linger_ms=10,
+
+    acks="all",
     retries=5,
-    acks="all"
-)
+    linger_ms=10
+))
 
 print(f"Producing {TOTAL_MESSAGES} messages to {TOPIC} "
       f"({MESSAGES_PER_MINUTE} msg/min, SASL_SSL)")
