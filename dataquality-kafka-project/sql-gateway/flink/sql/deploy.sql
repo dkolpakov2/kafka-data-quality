@@ -77,6 +77,26 @@ FROM enriched_events;
 
 -----
 
+-- Add processing-time wrappers so we can do a time-bounded interval join.
+CREATE VIEW topic1_source_proc AS
+SELECT
+  pk,
+  hash,
+  payload,
+  ts,
+  PROCTIME() AS proc_time
+FROM topic1_source;
+
+CREATE VIEW topic2_hash_proc AS
+SELECT
+  pk,
+  cloud_hash,
+  PROCTIME() AS proc_time
+FROM topic2_hash;
+
+-- Replace the original join with a LEFT interval join that waits up to 10 seconds
+-- for topic2 to produce/advance its state (joins t2 where t2.proc_time is within
+-- [t1.proc_time, t1.proc_time + INTERVAL '10' SECOND]).
 CREATE VIEW enriched_events_view AS
 SELECT DISTINCT
   t1.pk,
@@ -84,9 +104,10 @@ SELECT DISTINCT
   t2.cloud_hash,
   t1.payload,
   t1.ts
-FROM topic1_source t1       
-LEFT JOIN topic2_hash t2
-ON t1.pk = t2.pk;   
+FROM topic1_source_proc t1
+LEFT JOIN topic2_hash_proc t2
+  ON t1.pk = t2.pk
+  AND t2.proc_time BETWEEN t1.proc_time AND t1.proc_time + INTERVAL '10' SECOND;
 -- This view enriches events from topic1_source with cloud_hash from topic2_hash 
 -- based on matching primary keys (pk). 
 -- Added payload to the view for further processing in data quality checks.
