@@ -1,3 +1,7 @@
+-- Set Flink job name (appears in Flink UI). In Zeppelin use %flink.sql and run this
+-- before any statements that submit the streaming job (e.g. INSERT INTO ...).
+SET 'pipeline.name' = 'dq-enrichment-job';
+
 CREATE TABLE topic1_source (
   pk STRING,
   hash STRING,
@@ -108,6 +112,7 @@ FROM topic1_source_proc t1
 LEFT JOIN topic2_hash_proc t2
   ON t1.pk = t2.pk
   AND t2.proc_time BETWEEN t1.proc_time AND t1.proc_time + INTERVAL '10' SECOND;
+  AND t2.event_time BETWEEN t1.event_time - INTERVAL '5' SECOND AND t1.event_time + INTERVAL '10' SECOND;
 -- This view enriches events from topic1_source with cloud_hash from topic2_hash 
 -- based on matching primary keys (pk). 
 -- Added payload to the view for further processing in data quality checks.
