@@ -186,8 +186,39 @@ FROM dq_results
 WHERE dq_status = 'INVALID';
 
 
+------Reconcile Data Quality Rules Examples------
+CREATE TABLE cassandra_reconcile (
+  pk STRING,
+  payload STRING,
+  ts TIMESTAMP(3),
+  dq_status STRING,
+  dq_reason STRING,
+  dq_error_total INT
+) WITH (
+  'connector' = 'kafka',
+  'topic' = 'cassandra-reconcile',
+  'properties.bootstrap.servers' = 'kafka:9092',
+  'format' = 'json'
+);
 
+INSERT INTO cassandra_reconcile
+SELECT
+  v.pk,
+  r.payload,
+  r.ts,
+  v.dq_status,
+  v.dq_reason,
+  v.dq_error_total
+FROM dq_results_view v
+LEFT JOIN dq_results r
+  ON v.pk = r.pk
+WHERE v.dq_status = 'INVALID';
+-- Additional Data Quality Rules can be implemented similarly
+-- by creating views or tables that encapsulate specific checks.
+-- Below are some example rules that can be added as needed.  
+  
 
+-------------------------------------------------
 -- Example Rule 1: Check for null values in critical columns
 -- CREATE VIEW dq_null_check AS 
 -- SELECT *,
