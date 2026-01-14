@@ -1,0 +1,96 @@
+<VSCode.Cell language="markdown">
+# Cassandra — Zeppelin Examples
+
+This notebook contains ready-to-run Zeppelin paragraphs for connecting to Cassandra using:
+
+- Spark (Spark Cassandra Connector) with `%pyspark` (recommended for bulk reads/writes)
+- Python using the `cassandra-driver` with `%python` (recommended for adhoc queries/inserts)
+
+Paste each paragraph into a Zeppelin notebook or upload this notebook content into your Zeppelin instance.
+
+> Note: Adjust `CASSANDRA_HOST`, `mykeyspace`, and `mytable` to match your environment. Ensure the Spark interpreter has the Spark Cassandra Connector dependency and that your Python interpreter has `cassandra-driver` installed.
+</VSCode.Cell>
+
+<VSCode.Cell language="python">
+%pyspark
+# Spark (PySpark) example: Read from Cassandra
+from pyspark.sql import SparkSession
+spark = SparkSession.builder.getOrCreate()
+
+# Replace with your keyspace/table
+keyspace = "mykeyspace"
+table = "mytable"
+
+# Read
+df = spark.read.format("org.apache.spark.sql.cassandra") \
+    .options(table=table, keyspace=keyspace) \
+    .load()
+
+# Show sample
+display(df.limit(50))
+</VSCode.Cell>
+
+<VSCode.Cell language="python">
+%pyspark
+# Spark (PySpark) example: Append rows to Cassandra
+from pyspark.sql import Row
+
+new_rows = [Row(pk='k1', col='value1'), Row(pk='k2', col='value2')]
+new_df = spark.createDataFrame(new_rows)
+
+new_df.write.format("org.apache.spark.sql.cassandra") \
+    .options(table=table, keyspace=keyspace) \
+    .mode("append") \
+    .save()
+
+# Verify an appended row
+display(spark.read.format("org.apache.spark.sql.cassandra").options(table=table, keyspace=keyspace).load().where("pk='k1'").limit(10))
+</VSCode.Cell>
+
+<VSCode.Cell language="python">
+%python
+# Python (cassandra-driver) example: SELECT and INSERT
+from cassandra.cluster import Cluster
+import pandas as pd
+
+CASSANDRA_HOST = 'CASSANDRA_HOST'
+KEYSPACE = 'mykeyspace'
+TABLE = 'mytable'
+
+cluster = Cluster([CASSANDRA_HOST])
+session = cluster.connect(KEYSPACE)
+
+# SELECT example
+rows = session.execute(f"SELECT * FROM {TABLE} LIMIT 20")
+df = pd.DataFrame(list(rows))
+print(df.head())
+
+# INSERT example (parametrized)
+session.execute(f"INSERT INTO {TABLE} (pk, col) VALUES (%s, %s)", ("k3", "value3"))
+
+# Cleanup
+cluster.shutdown()
+</VSCode.Cell>
+
+<VSCode.Cell language="markdown">
+## Notes & Checklist
+
+- Interpreter configuration for Spark:
+  - Add dependency: `com.datastax.spark:spark-cassandra-connector_2.12:3.0.0` (choose appropriate version for your Spark/Scala)
+  - Set Spark properties:
+    - `spark.cassandra.connection.host = CASSANDRA_HOST`
+    - `spark.cassandra.connection.port = 9042`
+    - `spark.cassandra.auth.username` / `spark.cassandra.auth.password` (if needed)
+- For Python paragraphs: install `cassandra-driver` in the interpreter environment: `pip install cassandra-driver` (or run `%sh pip install cassandra-driver --user` from Zeppelin).
+- Ensure network connectivity (DNS, ports) and credentials are correct.
+- Create keyspace/table beforehand if not present:
+
+```
+CREATE KEYSPACE IF NOT EXISTS mykeyspace WITH replication = {'class':'SimpleStrategy','replication_factor':1};
+CREATE TABLE IF NOT EXISTS mykeyspace.mytable (pk text PRIMARY KEY, col text);
+```
+
+---
+
+Open this file directly in your editor or copy the paragraphs into Zeppelin to run them interactively.
+</VSCode.Cell>

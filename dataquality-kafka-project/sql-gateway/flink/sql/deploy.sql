@@ -217,6 +217,12 @@ WHERE v.dq_status = 'INVALID';
 -- by creating views or tables that encapsulate specific checks.
 -- Below are some example rules that can be added as needed.  
   
+------------------
+CREATE KEYSPACE IF NOT EXISTS mykeyspace 
+WITH replication = {'class':'SimpleStrategy','replication_factor':'1'};
+CREATE TABLE IF NOT EXISTS 
+mykeyspace.mytable (pk text PRIMARY KEY, col text);
+
 
 -------------------------------------------------
 -- Example Rule 1: Check for null values in critical columns

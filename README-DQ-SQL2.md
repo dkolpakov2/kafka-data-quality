@@ -1229,6 +1229,62 @@ CREATE TRIGGER users_audit
 AFTER INSERT OR UPDATE OR DELETE ON users
     FOR EACH ROW EXECUTE FUNCTION process_users_audit();
 ========== DONE ==================================================
+
+# ERROR ==============================
+org.apache.fink.table.api.TableException: Table sink doen't support consuming update and delete changes which is produced by node JOin(joinType=[LeftOuterJoin], where=[(pk=pk0)], select=[pk, status, reason, pk0, payload, ts], leftInputSpec=[NoUniqueKey], rightInputSpec=[NoUniqueKey])
+## This Flink error occurs because your LEFT OUTER JOIN is producing update/delete changes (retractions), but your table sink doesn't support them. This happens when the join inputs lack unique keys.
+Root Causes:
+1 .No primary keys defined on either the left or right input (NoUniqueKey)
+2. Flink must emit retractions to handle JOIN updates correctly
+3. Your sink (likely Kafka or a database) doesn't accept update/delete messages
+----------------------
+Solutions:
+## ✅ Option 1: Define Primary Keys (Recommended)
+Add PRIMARY KEY constraints to your source tables:
+
+CREATE TABLE left_table (
+  pk STRING,
+  status STRING,
+  reason STRING,
+  PRIMARY KEY (pk) NOT ENFORCED
+) WITH (...);
+
+CREATE TABLE right_table (
+  pk0 STRING,
+  payload STRING,
+  ts BIGINT,
+  PRIMARY KEY (pk0) NOT ENFORCED
+) WITH (...);
+
+-- Now the JOIN will work with fewer retractions
+SELECT l.pk, l.status, l.reason, r.pk0, r.payload, r.ts
+FROM left_table l
+LEFT JOIN right_table r ON l.pk = r.pk0;
+---------------
+## ✅ Option 2: Use Append-Only Mode
+SELECT l.pk, l.status, l.reason, r.pk0, r.payload, r.ts
+FROM left_table l
+LEFT JOIN right_table r ON l.pk = r.pk0
+WHERE r.pk0 IS NOT NULL;  -- Filter to append-only results
+---------------
+## ✅ Option 3: Use a Retraction-Aware Sink
+Switch to a sink that supports updates (e.g., Upsert Kafka, Iceberg, or Hive):
+>> CREATE TABLE result_sink (
+  pk STRING PRIMARY KEY,
+  status STRING,
+  reason STRING,
+  ...
+) WITH (
+  'connector' = 'upsert-kafka',
+  'topic' = 'output-topic',
+  'properties.bootstrap.servers' = 'localhost:9092'
+);
+---------------
+✅ Option 4: Check Flink Configuration
+Ensure your SQL configuration supports retractions:
+>>
+SET 'sql.exec.sink.upsert-materialize' = 'AUTO';  -- or 'FORCE'
+
 ==================================================================
 
 next:
