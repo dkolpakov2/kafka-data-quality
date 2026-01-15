@@ -40,7 +40,10 @@ def sql_list(items):
 def rule_to_condition(rule):
     rtype = rule.get("type")
     sev = rule.get("severity", "fail")
+    rid = rule.get("id", "unknown")
     msg = rule.get("message", "")
+    # Ensure msg is not empty (Flink requires non-whitespace field names)
+    msg = msg.strip() if msg else f"rule_{rid}_failed"
     null_handling = rule.get("null_handling", "default")  # default / fail / skip
 
     cond = None

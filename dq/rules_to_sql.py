@@ -18,7 +18,9 @@ def generate_case_expr(rules):
         rtype = r.get("type")
         rid = r.get("id")
         sev = r.get("severity", "fail")
-        msg = r.get("message", "")
+        msg = r.get("message", rid or "validation_failed")  # Use rule ID or default message
+        # Ensure msg is not empty (Flink requires non-whitespace field names)
+        msg = msg.strip() if msg else f"rule_{rid}_failed"
         if rtype == "required":
             fields = r.get("fields", [])
             cond = " OR ".join([f"{fld} IS NULL" for fld in fields])

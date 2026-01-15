@@ -1256,13 +1256,14 @@ CREATE TABLE right_table (
   PRIMARY KEY (pk0) NOT ENFORCED
 ) WITH (...);
 
+INSERT  
 -- Now the JOIN will work with fewer retractions
 SELECT l.pk, l.status, l.reason, r.pk0, r.payload, r.ts
 FROM left_table l
 LEFT JOIN right_table r ON l.pk = r.pk0;
 ---------------
 ## ✅ Option 2: Use Append-Only Mode
-SELECT l.pk, l.status, l.reason, r.pk0, r.payload, r.ts
+SELECT l.pk, l.status, l.reason, r.pk0, rl, r.ts
 FROM left_table l
 LEFT JOIN right_table r ON l.pk = r.pk0
 WHERE r.pk0 IS NOT NULL;  -- Filter to append-only results
@@ -1286,6 +1287,52 @@ Ensure your SQL configuration supports retractions:
 SET 'sql.exec.sink.upsert-materialize' = 'AUTO';  -- or 'FORCE'
 
 ==================================================================
+## ERROR: org.apache.fink.table.api.ValidationException: Filed names must contain at least one non-whitespace character
+>>>
+This Flink validation error occurs when a field name is empty or contains only whitespace. This typically happens in complex SQL queries with multiple joins, aliases, or string operations.
+
+INSERT INTO cassandra_reconcile(pk, payload, ts, dq_status, dq_reason)
+SELECT
+  'uuid1' AS pk,
+  CAST(JSON_OBJECT(
+    'cust_id', 'test',
+    'idmp_key', 'test',
+    'load_ts', '2025-11-20T11:12:15'
+  ) AS STRING) AS payload,
+  CURRENT_TIMESTAMP AS ts,
+  'INVALID' AS dq_status,
+  'MISSING_CLOUD' AS dq_reason;
+
+=================================================================
+## ERROR: SELECT * from cass_reconcile LIMIT 1; give an ERROR: org.apache.fink.table.api.ValidationException: Filed names must contain at least one non-whitespace character
+-------
+
+## ✅ FIX: Use Regular Kafka Connector with Error Handling
+
+```sql
+CREATE TABLE cass_reconcile (
+  pk STRING,
+  payload STRING,
+  ts TIMESTAMP(3),
+  dq_status STRING,
+  dq_reason STRING
+) WITH (
+  'connector' = 'kafka',
+  'topic' = 'cassandra-reconcile',
+  'properties.bootstrap.servers' = 'kafka:9092',
+  'format' = 'json',
+  'json.fail-on-missing-field' = 'false',
+  'json.ignore-parse-errors' = 'true'
+);
+
+-- Now this will work:
+SELECT * FROM cass_reconcile LIMIT 1;
+```
+
+**Why this works:**
+- Regular `kafka` connector supports `json.fail-on-missing-field` and `json.ignore-parse-errors`
+- `upsert-kafka` does NOT support these options (use only `key.format` and `value.format`)
+- This configuration skips malformed JSON records instead of throwing validation errors
 
 next:
 
