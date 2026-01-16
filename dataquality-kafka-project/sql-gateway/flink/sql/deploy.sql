@@ -77,7 +77,7 @@ SELECT
   ELSE 0
   END AS dq_error_total
 
-FROM enriched_events;
+FROM enriched_events_view;
 
 -----
 
@@ -112,7 +112,6 @@ FROM topic1_source_proc t1
 LEFT JOIN topic2_hash_proc t2
   ON t1.pk = t2.pk
   AND t2.proc_time BETWEEN t1.proc_time AND t1.proc_time + INTERVAL '10' SECOND;
-  AND t2.event_time BETWEEN t1.event_time - INTERVAL '5' SECOND AND t1.event_time + INTERVAL '10' SECOND;
 -- This view enriches events from topic1_source with cloud_hash from topic2_hash 
 -- based on matching primary keys (pk). 
 -- Added payload to the view for further processing in data quality checks.
@@ -128,12 +127,13 @@ SELECT
         WHEN ee.source_hash = ee.cloud_hash THEN TRUE
         ELSE FALSE
     END AS hash_match
-FROM enriched_events ee;
+FROM enriched_events_view ee;
 -- This view performs data quality checks by comparing source_hash and cloud_hash.
 -- It outputs a boolean indicating whether the hashes match for each event.
 -- If cloud_hash is NULL, it indicates missing data, resulting in a FALSE match.
 -- The resulting view includes pk, payload, timestamp, and the hash match result.
 
+-- Create DQ metrics view
 CREATE VIEW dq_metrics AS
 SELECT
   dq_status,
@@ -145,10 +145,10 @@ GROUP BY dq_status;
 
 INSERT INTO dq_results
 SELECT
-    pk,
-    payload,
-    ts,
-    hash_match
+  pk,
+  payload,
+  ts,
+  hash_match
 FROM dq_check_view;
 -- This insertion writes the results of the data quality checks into the dq_results table.
 -- The dq_results table captures the primary key, payload, timestamp, and
@@ -182,36 +182,35 @@ CREATE TABLE dq_dlq (
 
 INSERT INTO dq_dlq
 SELECT pk, dq_reason
-FROM dq_results
+FROM dq_results_view
 WHERE dq_status = 'INVALID';
-
 
 ------Reconcile Data Quality Rules Examples------
 CREATE TABLE cassandra_reconcile (
-  pk STRING,
+  pk STRING NOT NULL,
   payload STRING,
   ts TIMESTAMP(3),
   dq_status STRING,
   dq_reason STRING,
-  dq_error_total INT
+  dq_error_total INT,
+  PRIMARY KEY (pk) NOT ENFORCED
 ) WITH (
-  'connector' = 'kafka',
+  'connector' = 'upsert-kafka',
   'topic' = 'cassandra-reconcile',
   'properties.bootstrap.servers' = 'kafka:9092',
-  'format' = 'json'
+  'key.format' = 'raw',
+  'value.format' = 'json'
 );
 
 INSERT INTO cassandra_reconcile
 SELECT
   v.pk,
-  r.payload,
-  r.ts,
+  v.payload,
+  v.ts,
   v.dq_status,
   v.dq_reason,
   v.dq_error_total
 FROM dq_results_view v
-LEFT JOIN dq_results r
-  ON v.pk = r.pk
 WHERE v.dq_status = 'INVALID';
 -- Additional Data Quality Rules can be implemented similarly
 -- by creating views or tables that encapsulate specific checks.
