@@ -202,6 +202,26 @@ CREATE TABLE cassandra_reconcile (
   'value.format' = 'json'
 );
 
+------- Version for connector =Kafka ---------
+CREATE TABLE cassandra_reconcile (
+  pk STRING NOT NULL,
+  payload STRING,
+  ts TIMESTAMP(3),
+  dq_status STRING,
+  dq_reason STRING,
+  dq_error_total INT,
+) WITH (
+  'connector' = 'kafka',
+  'topic' = 'cassandra-reconcile',
+  'properties.bootstrap.servers' = 'kafka:9092',
+  'key.format' = 'raw',
+  'key.fields-prefix'= 'pk',
+  'value.format' = 'json',
+  'value.fields-include'= 'EXCEPT_KEY'',
+  
+
+);
+
 INSERT INTO cassandra_reconcile
 SELECT
   v.pk,

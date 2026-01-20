@@ -171,3 +171,44 @@ Best solution for Kafka failover between on-prem and AKS:
     Provide AKS + Strimzi YAML
     Help choose Active-Active vs Active-Passive
     Create an exam-ready Azure architecture diagram
+
+---------------------------------------
+##  ❌ Confluent Replicator (Licensed)
+--------------------------------------------------------------
+| Feature             | MirrorMaker 2 | Confluent Replicator |
+| ------------------- | ------------- | -------------------- |
+| Cost                | Free          | Paid                 |
+| License             | Apache 2.0    | Commercial           |
+| Offset Sync         | Yes           | Yes                  |
+| Auto Topic Creation | Yes           | Yes                  |
+| Enterprise Support  | Community     | Confluent            |
+| GUI / Automation    | Limited       | Advanced             |
+--------------------------------------------------------------
+## Where MirrorMaker 2 Runs
+ - MirrorMaker 2 can run:
+As a Kafka Connect cluster
+On:
+    AKS (recommended)
+    VM
+    On-prem
+--------------------------------------------------------------
+## What You Still Pay For (Indirect Costs)
+    Even though MirrorMaker 2 is free, you pay for:
+        Compute (AKS nodes or VMs)
+        Storage
+        Network traffic (egress)
+        Operational overhead
+
+## Important Notes
+    - MirrorMaker 2 replicates topics and optionally consumer offsets
+    - It does not replace Kafka brokers
+    - Failover is still controlled via DNS or client logic
+
+--------------------------------------------------------------
+## Next Step:
+    Provide MirrorMaker 2 config files
+    Show AKS deployment (Strimzi-based)
+    Explain offset sync for consumers
+    Compare Active-Active vs Active-Passive Kafka    
+
+==============================================================    
