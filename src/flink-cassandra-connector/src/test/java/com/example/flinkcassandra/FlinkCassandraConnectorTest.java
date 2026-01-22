@@ -1,3 +1,4 @@
+// Ensure JUnit 5 is properly configured in your project
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
@@ -8,7 +9,7 @@ class FlinkCassandraConnectorTest {
 
     @BeforeEach
     void setUp() {
-        connector = new FlinkCassandraConnector();
+        connector = new FlinkCassandraConnector("localhost", 9042); // Replace with appropriate arguments
         // Initialize connector with necessary configurations if needed
     }
 
