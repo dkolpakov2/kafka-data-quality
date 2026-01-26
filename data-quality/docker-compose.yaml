@@ -1,4 +1,3 @@
-
 services:
   # ============================================================
   # ZOOKEEPER
@@ -81,9 +80,11 @@ services:
   # CASSANDRA (ON-PREM)
   # ============================================================
   cassandra_onprem:
-    image: cassandra:4.1
+    # image: cassandra:4.1
+    image: datastax/dse-server:6.8.0
     container_name: cassandra_onprem
     environment:
+      DS_LICENSE: "accept"
       CASSANDRA_CLUSTER_NAME: "OnPremCluster"
       CASSANDRA_DC: "DC_ONPREM"
       CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch

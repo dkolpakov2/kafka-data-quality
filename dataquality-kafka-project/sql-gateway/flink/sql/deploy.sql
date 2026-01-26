@@ -270,3 +270,17 @@ mykeyspace.mytable (pk text PRIMARY KEY, col text);
 --        END AS duplicate_check_result
 -- FROM source_table
 -- GROUP BY pk;
+
+-- Add SELECT query execution
+Table resultTable = tableEnv.sqlQuery("SELECT pk, payload, ts, dq_status, dq_reason, dq_error_total FROM cassandra_reconcile");
+
+// Convert the Table to a DataStream
+DataStream<Row> resultStream = tableEnv.toDataStream(resultTable);
+
+// Add sink to send the response to Kafka topic "cassandra-reconcile"
+resultStream.addSink(new FlinkKafkaProducer<>(
+    "cassandra-reconcile", // Kafka topic
+    new RowSerializationSchema(), // Serialization schema for Row
+    kafkaProperties, // Kafka producer properties
+    FlinkKafkaProducer.Semantic.EXACTLY_ONCE // Delivery semantic
+));

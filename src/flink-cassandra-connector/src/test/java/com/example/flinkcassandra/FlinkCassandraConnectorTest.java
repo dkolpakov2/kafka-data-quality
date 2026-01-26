@@ -9,7 +9,7 @@ class FlinkCassandraConnectorTest {
 
     @BeforeEach
     void setUp() {
-        connector = new FlinkCassandraConnector("localhost", 9042); // Replace with appropriate arguments
+        connector = new FlinkCassandraConnector("keyspace"); // Replace with appropriate arguments
         // Initialize connector with necessary configurations if needed
     }
 

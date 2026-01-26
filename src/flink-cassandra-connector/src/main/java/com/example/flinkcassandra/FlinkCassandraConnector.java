@@ -4,6 +4,7 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.cql.Row;
 
 public class FlinkCassandraConnector {
 
@@ -25,11 +26,19 @@ public class FlinkCassandraConnector {
     }
 
     public void addDataStream(DataStream<String> dataStream) {
-        dataStream.addSink(new SinkFunction<String>() {
+        dataStream.map(value -> {
+            // Query Cassandra by primary key
+            String query = "SELECT * FROM " + keyspace + ".your_table WHERE primary_key_column = '" + value + "';";
+            return session.execute(query).one(); // Fetch the first row (if any)
+        }).addSink(new SinkFunction<Row>() {
             @Override
-            public void invoke(String value, Context context) {
-                // Implement logic to write data to Cassandra
-                executeQuery("INSERT INTO " + keyspace + ".your_table (column) VALUES ('" + value + "');");
+            public void invoke(Row row, Context context) {
+                if (row != null) {
+                    // Process the row (example: print to console)
+                    System.out.println("Fetched row: " + row);
+                } else {
+                    System.out.println("No data found for the given primary key.");
+                }
             }
         });
     }
