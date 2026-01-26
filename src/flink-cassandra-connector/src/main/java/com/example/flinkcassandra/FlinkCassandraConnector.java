@@ -7,6 +7,8 @@ import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.cql.Row;
 import org.apache.flink.api.java.tuple.Tuple2;
 
+import java.util.List;
+
 public class FlinkCassandraConnector {
 
     private CqlSession session;
@@ -41,6 +43,49 @@ public class FlinkCassandraConnector {
                     System.out.println("Fetched row: " + row);
                 } else {
                     System.out.println("No data found for the given primary key and value.");
+                }
+            }
+        });
+    }
+
+    public void addDataStream(DataStream<List<String>> dataStream) {
+        dataStream.map(list -> {
+            if (list.size() < 2) {
+                throw new IllegalArgumentException("List must contain at least a primary key and its value.");
+            }
+
+            // Extract primary key and values
+            String primaryKey = list.get(0); // First element is the primary key
+            String primaryKeyValue = list.get(1); // Second element is the primary key value
+
+            // Construct query dynamically
+            StringBuilder queryBuilder = new StringBuilder("SELECT * FROM ")
+                .append(keyspace)
+                .append(".your_table WHERE ")
+                .append(primaryKey)
+                .append(" = '")
+                .append(primaryKeyValue)
+                .append("'");
+
+            // Add additional conditions if more elements exist
+            for (int i = 2; i < list.size(); i += 2) {
+                queryBuilder.append(" AND ")
+                    .append(list.get(i)) // Column name
+                    .append(" = '")
+                    .append(list.get(i + 1)) // Column value
+                    .append("'");
+            }
+
+            String query = queryBuilder.toString();
+            return session.execute(query).one(); // Fetch the first row (if any)
+        }).addSink(new SinkFunction<Row>() {
+            @Override
+            public void invoke(Row row, Context context) {
+                if (row != null) {
+                    // Process the row (example: print to console)
+                    System.out.println("Fetched row: " + row);
+                } else {
+                    System.out.println("No data found for the given query.");
                 }
             }
         });
