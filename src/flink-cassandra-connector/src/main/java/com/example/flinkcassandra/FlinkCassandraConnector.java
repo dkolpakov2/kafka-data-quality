@@ -5,6 +5,7 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.cql.Row;
+import org.apache.flink.api.java.tuple.Tuple2;
 
 public class FlinkCassandraConnector {
 
@@ -25,10 +26,12 @@ public class FlinkCassandraConnector {
         session.execute(query);
     }
 
-    public void addDataStream(DataStream<String> dataStream) {
-        dataStream.map(value -> {
-            // Query Cassandra by primary key
-            String query = "SELECT * FROM " + keyspace + ".your_table WHERE primary_key_column = '" + value + "';";
+    public void addDataStream(DataStream<Tuple2<String, String>> dataStream) {
+        dataStream.map(tuple -> {
+            // Query Cassandra using primary key and value
+            String primaryKey = tuple.f0; // data1
+            String primaryKeyValue = tuple.f1; // data2
+            String query = "SELECT * FROM " + keyspace + ".your_table WHERE " + primaryKey + " = '" + primaryKeyValue + "';";
             return session.execute(query).one(); // Fetch the first row (if any)
         }).addSink(new SinkFunction<Row>() {
             @Override
@@ -37,7 +40,7 @@ public class FlinkCassandraConnector {
                     // Process the row (example: print to console)
                     System.out.println("Fetched row: " + row);
                 } else {
-                    System.out.println("No data found for the given primary key.");
+                    System.out.println("No data found for the given primary key and value.");
                 }
             }
         });
@@ -54,7 +57,11 @@ public class FlinkCassandraConnector {
         FlinkCassandraConnector connector = new FlinkCassandraConnector("your_keyspace");
 
         // Example data stream
-        DataStream<String> dataStream = env.fromElements("data1", "data2", "data3");
+        DataStream<Tuple2<String, String>> dataStream = env.fromElements(
+            Tuple2.of("data1", "value1"),
+            Tuple2.of("data2", "value2"),
+            Tuple2.of("data3", "value3")
+        );
         connector.addDataStream(dataStream);
 
         env.execute("Flink Cassandra Connector Job");
