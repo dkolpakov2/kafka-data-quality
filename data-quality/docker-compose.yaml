@@ -124,7 +124,7 @@ services:
     environment:
       #- JOB_MANAGER_RPC_ADDRESS=jobmanager
       # JobManager host
-      jobmanager.rpc.address: jobmanager          # or docker service name
+      jobmanager.rpc.address: jobmanager  # or docker service name
       # Flink REST endpoint
       rest.address: jobmanager
       rest.port: 8081
@@ -137,6 +137,9 @@ services:
       jobmanager.memory.process.size: 1024m
       taskmanager.memory.process.size: 1024m #2048m
       taskmanager.numberOfTaskSlots: 2
+    #  - |
+    #    FLINK_PROPERTIES=
+    #    jobmanager.rpc.address: jobmanager
 
   taskmanager:
     image: flink:1.17.1 #flink:1.17-scala_2.12
