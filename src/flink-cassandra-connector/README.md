@@ -31,7 +31,11 @@ akka.stream.materializer {
   initial-input-buffer-size = 4
   max-input-buffer-size = 16
 }
-
+## 6. Debugging Tips
+If the issue persists, check the reference.conf file inside the JAR
+>> jar tf flink-cassandra-connector.jar | grep reference.conf
+## Extract and inspect the file
+jar xf flink-cassandra-connector.jar reference.conf
 
 =================================
 ## Project Structure
