@@ -24,6 +24,14 @@ docker exec -it. flink_jobmanager bash
 
 docker logs flink_jobmanager
 docker logs flink_taskmanager
+=============================
+## Fix 2. Check reference.conf for akka 
+The reference.conf file is used to configure Akka. Ensure that the akka.stream.materializer property is defined in your reference.conf file. If it’s missing, add the following:
+akka.stream.materializer {
+  initial-input-buffer-size = 4
+  max-input-buffer-size = 16
+}
+
 
 =================================
 ## Project Structure
