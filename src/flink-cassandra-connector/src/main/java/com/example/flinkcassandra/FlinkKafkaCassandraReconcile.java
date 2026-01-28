@@ -73,9 +73,21 @@ public class FlinkKafkaCassandraReconcile {
 
     private static String extractPrimaryKey(String message) {
         // Extract the primary key (pk) from the message
-        // Assuming the message is a JSON string with a "pk" field
+        // Try to extract from partitionColumns array where type is "PK"
+        // Example: {"partitionColumns": [{"name": "key", "value": "12345", "type": "PK"}]}
+        String pattern = ".*\"partitionColumns\"\\s*:\\s*\\[.*?\"type\"\\s*:\\s*\"PK\".*?\"value\"\\s*:\\s*\"(.*?)\".*?\\].*";
+        if (message.matches(pattern)) {
+            return message.replaceAll(pattern, "$1");
+        }
+        
+        // Fallback: try to extract from simple "pk" field
         // Example: {"pk": "value"}
-        return message.replaceAll(".*\"pk\":\"(.*?)\".*", "$1");
+        pattern = ".*\"pk\"\\s*:\\s*\"(.*?)\".*";
+        if (message.matches(pattern)) {
+            return message.replaceAll(pattern, "$1");
+        }
+        
+        return null;
     }
 
     private static Row queryCassandra(String pk) {
