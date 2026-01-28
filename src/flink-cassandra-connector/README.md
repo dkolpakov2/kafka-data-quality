@@ -37,6 +37,10 @@ If the issue persists, check the reference.conf file inside the JAR
 ## Extract and inspect the file
 jar xf flink-cassandra-connector.jar reference.conf
 
+
+## Error when run jar in docker :
+NoClassDefFoundError: org/apache/flink/api/common/Program at org.apache.flink.client.program.PackageProgram.<init>(PackageProgram.java:202)
+
 =================================
 ## Project Structure
 

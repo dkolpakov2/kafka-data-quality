@@ -64,6 +64,9 @@ public class FlinkKafkaCassandraReconcile {
         // Send the processed data to the "reconsile" Kafka topic
         processedStream.addSink(kafkaProducer);
 
+        // Produce example Kafka messages to the "input-topic"
+        produceKafkaMessages("input-topic", kafkaProducerProps);
+
         // Execute the Flink job
         env.execute("Flink Kafka Cassandra Reconcile Job");
     }
@@ -105,5 +108,31 @@ public class FlinkKafkaCassandraReconcile {
         }
 
         return hexString.toString();
+    }
+
+    private static void produceKafkaMessages(String topic, Properties kafkaProducerProps) {
+        // Create Kafka producer
+        FlinkKafkaProducer<String> kafkaProducer = new FlinkKafkaProducer<>(
+            topic,
+            new SimpleStringSchema(),
+            kafkaProducerProps
+        );
+
+        // Example messages to produce
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        DataStream<String> messageStream = env.fromElements(
+            "{\"pk\":\"value1\"}",
+            "{\"pk\":\"value2\"}",
+            "{\"pk\":\"value3\"}"
+        );
+
+        // Add the producer to the stream
+        messageStream.addSink(kafkaProducer);
+
+        try {
+            env.execute("Kafka Message Producer");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }
