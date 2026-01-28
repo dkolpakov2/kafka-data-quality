@@ -129,6 +129,17 @@ public class FlinkKafkaCassandraReconcile {
         // Add the producer to the stream
         messageStream.addSink(kafkaProducer);
 
+        // Add the new JSON message to the Kafka producer
+        DataStream<String> newMessageStream = env.fromElements(
+            "{\"source\":\"source1\",\"target\":\"target1\",\"table\": \"table1\",\"keyspace\":\"keyspace1\",\"cql\":\"INSERT INTO keyspace1.table1 ()\",\"timestampNanos\":\"2025-01-01T00:00:00Z\",\"correlationId\":\"12345\",\"type\":\"TYPE\",\"metadata\":\"metadata\",\"statementPayload\":[{\"type\":\"TYPE\",\"table\":\"table1\",\"partitionColumns\":[{\"name\":\"name\", \"value\":\"value\", \"type\":\"type\"}]}]}"
+        );
+
+        newMessageStream.addSink(new FlinkKafkaProducer<>(
+            "input-topic",
+            new SimpleStringSchema(),
+            kafkaProducerProps
+        ));
+
         try {
             env.execute("Kafka Message Producer");
         } catch (Exception e) {

@@ -640,6 +640,17 @@ Each notebook:
  3.3 Create messages:
     {"id":"1","event_ts":"2025-01-01T00:00:00Z","value":100}
     {"id":"2","event_ts":"2025-01-01T00:00:01Z","value":-50}
+
+    {"source":"source1",
+    "target":"target1",
+    "table": "table1",
+    "keyspace":"keyspace1",
+    "cql":"INSERT INTO keyspace1.table1 ()",
+    "timestampNanos":"2025-01-01T00:00:00Z",
+    "correlationId":"12345",
+    "type":"TYPE",
+    "metadata":"metadata",
+    "statementPayload":[{"type":"TYPE","table":"table1","partitionColumns":[{"name":"name", "value":"value", "type":"type"}]}]}
 ## Option 2 — Create topic first (if needed)
     Inside Kafka container:
     >> kafka-topics --create --topic topic_onprem_sales \
