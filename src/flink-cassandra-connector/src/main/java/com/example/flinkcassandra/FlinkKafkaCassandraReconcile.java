@@ -49,11 +49,14 @@ public class FlinkKafkaCassandraReconcile {
 
         // Process each message
         DataStream<String> processedStream = kafkaStream.map(message -> {
-            // Extract the primary key (pk) from the message
-            String pk = extractPrimaryKey(message);
+            // Extract the primary key name, value, keyspace, and table from the message
+            String pkName = extractFieldFromMessage(message, "partitionColumns", "name", "PK");
+            String pkValue = extractFieldFromMessage(message, "partitionColumns", "value", "PK");
+            String keyspace = extractSimpleField(message, "keyspace");
+            String table = extractSimpleField(message, "table");
 
-            // Query Cassandra using the pk
-            Row cassandraRow = queryCassandra(pk);
+            // Query Cassandra using the extracted values
+            Row cassandraRow = queryCassandra(keyspace, table, pkName, pkValue);
 
             // Hash the result
             String hashedResult = hashRow(cassandraRow);
@@ -71,28 +74,27 @@ public class FlinkKafkaCassandraReconcile {
         env.execute("Flink Kafka Cassandra Reconcile Job");
     }
 
-    private static String extractPrimaryKey(String message) {
-        // Extract the primary key (pk) from the message
-        // Try to extract from partitionColumns array where type is "PK"
-        // Example: {"partitionColumns": [{"name": "key", "value": "12345", "type": "PK"}]}
-        String pattern = ".*\"partitionColumns\"\\s*:\\s*\\[.*?\"type\"\\s*:\\s*\"PK\".*?\"value\"\\s*:\\s*\"(.*?)\".*?\\].*";
+    private static String extractFieldFromMessage(String message, String arrayField, String targetField, String typeValue) {
+        // Extract a specific field from a JSON array based on a type value
+        String pattern = String.format(".*\"%s\"\\s*:\\s*\\[.*?\"type\"\\s*:\\s*\"%s\".*?\"%s\"\\s*:\\s*\"(.*?)\".*?\\].*", arrayField, typeValue, targetField);
         if (message.matches(pattern)) {
             return message.replaceAll(pattern, "$1");
         }
-        
-        // Fallback: try to extract from simple "pk" field
-        // Example: {"pk": "value"}
-        pattern = ".*\"pk\"\\s*:\\s*\"(.*?)\".*";
-        if (message.matches(pattern)) {
-            return message.replaceAll(pattern, "$1");
-        }
-        
         return null;
     }
 
-    private static Row queryCassandra(String pk) {
+    private static String extractSimpleField(String message, String fieldName) {
+        // Extract a simple field from the JSON message
+        String pattern = String.format(".*\"%s\"\\s*:\\s*\"(.*?)\".*", fieldName);
+        if (message.matches(pattern)) {
+            return message.replaceAll(pattern, "$1");
+        }
+        return null;
+    }
+
+    private static Row queryCassandra(String keyspace, String table, String pkName, String pkValue) {
         try (CqlSession session = CqlSession.builder().build()) {
-            String query = "SELECT * FROM your_keyspace.your_table WHERE pk = '" + pk + "';";
+            String query = String.format("SELECT * FROM %s.%s WHERE %s = '%s';", keyspace, table, pkName, pkValue);
             return session.execute(query).one();
         }
     }

@@ -107,3 +107,5 @@ mvn test
 ## License
 
 This project is licensed under the MIT License. See the LICENSE file for more details.
+
+I need PK name and value, and "keyspace", , "table" get from Kafka message to pass all 4 values to queryCassandra
