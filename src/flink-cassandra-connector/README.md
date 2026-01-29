@@ -107,5 +107,8 @@ mvn test
 ## License
 
 This project is licensed under the MIT License. See the LICENSE file for more details.
-
+##
 I need PK name and value, and "keyspace", , "table" get from Kafka message to pass all 4 values to queryCassandra
+
+##
+create message to send to KkafkaProducer topic "reconsile" with fields: {"pk":"value", "hash": "hashed input-kafka message", "cass_hash": "hased cassandra row", "payload": "Cassandra row", "ts": timestemp, "action": INSERT/DELETE/UPDATE }

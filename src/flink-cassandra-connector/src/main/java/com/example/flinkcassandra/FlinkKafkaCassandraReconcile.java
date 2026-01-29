@@ -47,7 +47,7 @@ public class FlinkKafkaCassandraReconcile {
         // Read messages from Kafka
         DataStream<String> kafkaStream = env.addSource(kafkaConsumer);
 
-        // Process each message
+        // Process each message and send to 'reconsile' topic
         DataStream<String> processedStream = kafkaStream.map(message -> {
             // Extract the primary key name, value, keyspace, and table from the message
             String pkName = extractFieldFromMessage(message, "partitionColumns", "name", "PK");
@@ -58,13 +58,22 @@ public class FlinkKafkaCassandraReconcile {
             // Query Cassandra using the extracted values
             Row cassandraRow = queryCassandra(keyspace, table, pkName, pkValue);
 
-            // Hash the result
-            String hashedResult = hashRow(cassandraRow);
+            // Hash the input Kafka message and Cassandra row
+            String inputHash = hashString(message);
+            String cassandraHash = hashRow(cassandraRow);
 
-            return hashedResult;
+            // Create a JSON message with the required fields
+            String payload = cassandraRow != null ? cassandraRow.toString() : "null";
+            String timestamp = String.valueOf(System.currentTimeMillis());
+            String action = extractSimpleField(message, "action"); // Assuming 'action' field exists in the message
+
+            return String.format(
+                "{\"pk\":\"%s\", \"hash\":\"%s\", \"cass_hash\":\"%s\", \"payload\":\"%s\", \"ts\":\"%s\", \"action\":\"%s\"}",
+                pkValue, inputHash, cassandraHash, payload, timestamp, action
+            );
         });
 
-        // Send the processed data to the "reconsile" Kafka topic
+        // Send the processed data to the 'reconsile' Kafka topic
         processedStream.addSink(kafkaProducer);
 
         // Produce example Kafka messages to the "input-topic"
@@ -110,6 +119,28 @@ public class FlinkKafkaCassandraReconcile {
         // Hash the string using SHA-256
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         byte[] hashBytes = digest.digest(rowString.getBytes(StandardCharsets.UTF_8));
+
+        // Convert the hash bytes to a hexadecimal string
+        StringBuilder hexString = new StringBuilder();
+        for (byte b : hashBytes) {
+            String hex = Integer.toHexString(0xff & b);
+            if (hex.length() == 1) {
+                hexString.append('0');
+            }
+            hexString.append(hex);
+        }
+
+        return hexString.toString();
+    }
+
+    private static String hashString(String str) throws Exception {
+        if (str == null) {
+            return "null";
+        }
+
+        // Hash the string using SHA-256
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        byte[] hashBytes = digest.digest(str.getBytes(StandardCharsets.UTF_8));
 
         // Convert the hash bytes to a hexadecimal string
         StringBuilder hexString = new StringBuilder();
