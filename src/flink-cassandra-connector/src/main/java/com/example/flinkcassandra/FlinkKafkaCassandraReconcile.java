@@ -7,10 +7,16 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaProducer;
 import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.CqlSessionBuilder;
 import com.datastax.oss.driver.api.core.cql.Row;
+import com.example.flinkcassandra.utils.CassandraClusterBuilder;
+
 import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 
+import static org.junit.jupiter.api.DynamicTest.stream;
+
+import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Properties;
@@ -73,6 +79,10 @@ public class FlinkKafkaCassandraReconcile {
             );
         });
 
+        CassandraSink.addSink(processedStream)
+            .setClusterBuilder(new CassandraClusterBuilder())
+            .setQuery("INSERT INTO ks.table (id, value) VALUES (?, ?);")
+            .build();
         // Send the processed data to the 'reconsile' Kafka topic
         processedStream.addSink(kafkaProducer);
 
@@ -81,6 +91,14 @@ public class FlinkKafkaCassandraReconcile {
 
         // Execute the Flink job
         env.execute("Flink Kafka Cassandra Reconcile Job");
+    }
+
+    @Override
+    protected CqlSessionBuilder buildSession(CqlSessionBuilder builder) {
+        return builder
+            .addContactPoint(new InetSocketAddress("node1", 9042))
+            .addContactPoint(new InetSocketAddress("node2", 9042))
+            .withLocalDatacenter("dc1");
     }
 
     private static String extractFieldFromMessage(String message, String arrayField, String targetField, String typeValue) {
